@@ -22,7 +22,7 @@ public static unsafe class S3OUnity
             throw new System.Exception("No data");
 
         var header = reader.ReadStruct<S3OHeader>();
-        var magic = new string(header.magic);
+        var magic = new string((sbyte*)header.magic);
 
         if (magic != S3OHeader.Magic)
             throw new System.Exception("Not a Spring unit file: " + magic);

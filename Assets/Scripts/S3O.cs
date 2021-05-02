@@ -6,7 +6,7 @@ public unsafe struct S3OHeader
 {
     public const string Magic = "Spring unit";
 
-    public fixed char magic[12]; // "Spring unit\0"
+    public fixed byte magic[12]; // "Spring unit\0"
     public uint version;// = 0    # uint = 0
     public float radius;// = 0.0 # float: radius of collision sphere
     public float height;// = 0.0 # float: height of whole object

@@ -1,56 +1,146 @@
 using UnityEngine;
 using System.IO;
 using System.Collections.Generic;
+using CFRenderLib.Unity;
+
+public struct TileFileInfo
+{
+    public int numTiles;
+    public string fileName;
+}
 
 public static unsafe class SMFUnity
 {
-    public static SMFData Load(string path)
+    const int TileSizeBytes = 680;
+
+    public static GameObject Load(string smfPath)
     {
+        var dir = Path.GetDirectoryName(smfPath);
+
         SMFData data;
         SMFHeader header;
+        MapTileHeader mapTileHeader;
+        TileFileInfo[] tileFiles;
+        int[] tileIndices;
 
-        var dir = Path.GetDirectoryName(path);
-
-        using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
+        using (BinaryReader reader = new BinaryReader(File.OpenRead(smfPath)))
         {
             header = LoadHeader(reader);
-			data = LoadData(reader, header);
-            Debug.Log(header.mapx + " " + header.mapy);
+            data = LoadData(reader, header);
 
             reader.BaseStream.Position = header.tilesPtr;
-            var mapTileHeader = reader.ReadStruct<MapTileHeader>();
+            mapTileHeader = reader.ReadStruct<MapTileHeader>();
+
+            tileFiles = new TileFileInfo[mapTileHeader.numTileFiles];
+
+            if (mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4))
+                throw new System.Exception("mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4)");
 
             for (int i = 0; i < mapTileHeader.numTileFiles; ++i)
             {
-                int tiles = reader.ReadInt32();
-                var tileFileName = reader.ReadNullTerminatedString();
-
-                var tileFilePath = Path.Combine(dir, tileFileName);
-                Debug.Log(tiles+ " " + tileFilePath);
-
-                LoadTileFile(tileFilePath);
+                tileFiles[i].numTiles = reader.ReadInt32();
+                tileFiles[i].fileName = reader.ReadNullTerminatedString();
             }
+
+            var tileIndicesBytes = reader.ReadBytes(sizeof(int) * (header.mapx / 4) * (header.mapy / 4));
+            tileIndices = new int[(header.mapx / 4) * (header.mapy / 4)];
+            System.Buffer.BlockCopy(tileIndicesBytes, 0, tileIndices, 0, tileIndicesBytes.Length);
+        }
+
+        var tiles = new byte[mapTileHeader.numTiles][];
+        var offset = 0;
+
+        for (int i = 0; i < mapTileHeader.numTileFiles; ++i)
+        {
+            var tileFilePath = Path.Combine(dir, tileFiles[i].fileName);
+            LoadTileFile(tileFilePath, tiles, ref offset, tileFiles[i].numTiles);
         }
 
 
-
-        //var smtFilePath = Path.ChangeExtension(path, "smt");
-
-        //Debug.Log(smtFilePath);
+        //var dxt1Data = new byte[tileIndices.Length * TileSizeBytes];
+        //Texture2DArray tileMap = new Texture2DArray(32, 32, tileIndices.Length, TextureFormat.DXT1, true);
         //
+        //for (int y = 0; y < header.mapy / 4; ++y)
+        //{
+        //    for (int x = 0; x < header.mapx / 4; ++x)
+        //    {
+        //        int i = (header.mapx / 4) * y + x;
+        //        tileMap.SetPixelData(tileData, 0, i, tileIndices[i] * TileSizeBytes);
+        //    }
+        //}
+        //
+        //tileMap.Apply(false, true);
 
+        Texture2D mapTex = new Texture2D(32 * header.mapx / 4, 32 * header.mapy / 4, TextureFormat.DXT1, true);
 
-        return data;
+        var tc = TextureCompressionInfo.Get(mapTex);
 
+        var outData = new RawTextureData(mapTex, tc);
+
+        TextureCompression.Clear(tc, outData, AtlasClearColor.Grey);
+
+        for (int y = 0; y < header.mapy / 4; ++y)
+        {
+            for (int x = 0; x < header.mapx / 4; ++x)
+            {
+                int tileIndex = tileIndices[(header.mapx / 4) * y + x];
+                var texData = new RawTextureData(tiles[tileIndex], 32, 32, 4, tc);
+                TextureCompression.CopyTexture(tc, texData, outData, x * 32, y * 32, 32, 32);
+            }
+        }
+
+        mapTex.Apply();
+
+        var root = CreateMapObject(data);
+
+        var material = root.GetComponentInChildren<MeshRenderer>().sharedMaterial;
+
+        ///material.SetTexture("_TileMap", tileMap);
+        material.SetTexture("_Map", mapTex);
+
+        return root;
     }
 
-    public static void LoadTileFile(string path)
+    public static TileFileHeader LoadTileFileHeader(BinaryReader reader)
+    {
+        var header = reader.ReadStruct<TileFileHeader>();
+        var magic = new string((sbyte*)header.magic);
+        if (magic != TileFileHeader.Magic)
+            throw new System.Exception("Invalid TileFileHeader magic: " + magic);
+
+        return header;
+    }
+
+    public static void LoadTileFile(string path, byte[][] tiles, ref int offset, int numTiles)
     {
         using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
         {
             var header = LoadTileFileHeader(reader);
-            Debug.Log(header.tileSize);
-            Debug.Log(header.numTiles);
+            
+            if (header.numTiles != numTiles)
+                throw new System.Exception("header.numTiles != numTiles");
+
+            if (header.tileSize != 32)
+                throw new System.Exception("header.tileSize != 32");
+
+            if (header.compressionType != 1)
+                throw new System.Exception("header.compressionType != 1");
+
+            //int bytesToRead = numTiles * TileSizeBytes;
+            //
+            //if (reader.Read(tileData, offset, bytesToRead) != bytesToRead)
+            //    throw new System.Exception("out of bounds");
+            //
+            //offset += bytesToRead;
+
+            for (int i = 0; i < numTiles; ++i)
+            {
+                var bytes = reader.ReadBytes(TileSizeBytes);
+                if (bytes.Length != TileSizeBytes)
+                    throw new System.Exception("out of bounds");
+                tiles[offset++] = bytes;
+            }
+
         }
     }
 
@@ -58,7 +148,7 @@ public static unsafe class SMFUnity
 	{
 		var header = reader.ReadStruct<SMFHeader>();
 
-		var magic = new string(header.magic);
+		var magic = new string((sbyte*)header.magic);
 
 		if (magic != SMFHeader.Magic)
 			throw new System.Exception("Not a Spring unit file: " + magic);
@@ -98,16 +188,6 @@ public static unsafe class SMFUnity
 		return height;
 	}
 
-    public static TileFileHeader LoadTileFileHeader(BinaryReader reader)
-    {
-        var header = reader.ReadStruct<TileFileHeader>();
-        var magic = new string(header.magic);
-        if(magic != TileFileHeader.Magic)
-            throw new System.Exception("Invalid TileFileHeader magic: " + magic);
-
-        return header;
-    }
-
     const int chunkSize = 32;
 
     public static GameObject CreateMapObject(SMFData data)
@@ -129,7 +209,7 @@ public static unsafe class SMFUnity
         //m_material = Object.Instantiate(material);
         //SetMaterialProps();
 
-        var material = new Material(Shader.Find("Standard"));
+        var material = new Material(Shader.Find("Custom/Splat"));
 
         for (int x = 0; x < divisionsX; ++x)
         {

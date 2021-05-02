@@ -6,7 +6,7 @@ public unsafe struct SMFHeader
 {
 	public const string Magic = "spring map file";
 
-	public fixed char magic[16];///< "spring map file\0"
+	public fixed byte magic[16];///< "spring map file\0"
 	public int version;         ///< Must be 1 for now
 	public int mapid;           ///< Sort of a GUID of the file, just set to a random value when writing a map
 	public int mapx;            ///< Must be divisible by 128
@@ -62,7 +62,7 @@ public struct MapFeature
 public unsafe struct TileFileHeader
 {
 	public const string Magic = "spring tilefile";
-	public fixed char magic[16];      ///< "spring tilefile\0"
+	public fixed byte magic[16];      ///< "spring tilefile\0"
 	public int version;         ///< Must be 1 for now
 	public int numTiles;        ///< Total number of tiles in this file
 	public int tileSize;        ///< Must be 32 for now

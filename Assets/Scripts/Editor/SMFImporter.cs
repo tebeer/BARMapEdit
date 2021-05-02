@@ -9,14 +9,15 @@ public class SMFImporter : ScriptedImporter
 
     public override void OnImportAsset(AssetImportContext ctx)
     {
-        var data = SMFUnity.Load(ctx.assetPath);
-
-        var map = SMFUnity.CreateMapObject(data);
+        var map = SMFUnity.Load(ctx.assetPath);
         AddRecursive(ctx, map);
         ctx.SetMainObject(map);
 
         var mr = map.GetComponentInChildren<MeshRenderer>();
         ctx.AddObjectToAsset("material", mr.sharedMaterial);
+
+        var mapTex = mr.sharedMaterial.GetTexture("_Map");
+        ctx.AddObjectToAsset("_Map", mapTex);
     }
 
     private void AddRecursive(AssetImportContext ctx, GameObject go)
