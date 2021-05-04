@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor.AssetImporters;
 using System.IO;
+using System.Collections.Generic;
 
 [ScriptedImporter(1, "smf")]
 public class SMFImporter : ScriptedImporter
@@ -13,11 +14,16 @@ public class SMFImporter : ScriptedImporter
         AddRecursive(ctx, map);
         ctx.SetMainObject(map);
 
-        var mr = map.GetComponentInChildren<MeshRenderer>();
-        ctx.AddObjectToAsset("material", mr.sharedMaterial);
+        var materials = new HashSet<Material>();
+        foreach (var mr in map.GetComponentsInChildren<MeshRenderer>())
+            materials.Add(mr.sharedMaterial);
 
-        var mapTex = mr.sharedMaterial.GetTexture("_Map");
-        ctx.AddObjectToAsset("_Map", mapTex);
+        foreach (var m in materials)
+        {
+            ctx.AddObjectToAsset(m.name, m);
+            var mapTex = m.GetTexture("_Map");
+            ctx.AddObjectToAsset(mapTex.name, mapTex);
+        }
     }
 
     private void AddRecursive(AssetImportContext ctx, GameObject go)

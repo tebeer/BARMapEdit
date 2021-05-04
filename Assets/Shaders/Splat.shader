@@ -10,6 +10,8 @@ Shader "Custom/Splat"
         //_Detail4("Detail 4(RGB)", 2D) = "white" {}
         //_Splat("Splat (RGBA)", 2D) = "white" {}
         _Normal("Normal", 2D) = "bump" {}
+        _ChunksX("ChunksX", Float) = 1
+        _ChunksY("ChunksY", Float) = 1
     }
     SubShader
     {
@@ -18,8 +20,7 @@ Shader "Custom/Splat"
 
         CGPROGRAM
         // Physically based Standard lighting model, and enable shadows on all light types
-        #pragma surface surf Standard fullforwardshadows
-        #pragma require 2darray
+        #pragma surface surf Standard fullforwardshadows vertex:vert
 
         // Use shader model 3.0 target, to get nicer looking lighting
         #pragma target 3.0
@@ -31,14 +32,25 @@ Shader "Custom/Splat"
         //sampler2D _Detail4;
         //sampler2D _Splat;
         sampler2D _Normal;
+        float _ChunksX;
+        float _ChunksY;
 
         struct Input
         {
             float2 uv_Map;
         };
 
+        void vert(inout appdata_full v)
+        {
+            v.texcoord.x = (_ChunksX * v.texcoord.x);
+            v.texcoord.y = (_ChunksY * v.texcoord.y);
+        }
+
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
+            //float2 uv_Chunk = float2(_ChunksX * IN.uv_Map.x, _ChunksY * IN.uv_Map.y);
+            //uv_Chunk = frac(uv_Chunk);
+
             fixed4 map = tex2D(_Map, IN.uv_Map);
 
             o.Albedo = map.rgb;//splat.rgb;

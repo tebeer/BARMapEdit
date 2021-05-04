@@ -56,47 +56,7 @@ public static unsafe class SMFUnity
             LoadTileFile(tileFilePath, tiles, ref offset, tileFiles[i].numTiles);
         }
 
-
-        //var dxt1Data = new byte[tileIndices.Length * TileSizeBytes];
-        //Texture2DArray tileMap = new Texture2DArray(32, 32, tileIndices.Length, TextureFormat.DXT1, true);
-        //
-        //for (int y = 0; y < header.mapy / 4; ++y)
-        //{
-        //    for (int x = 0; x < header.mapx / 4; ++x)
-        //    {
-        //        int i = (header.mapx / 4) * y + x;
-        //        tileMap.SetPixelData(tileData, 0, i, tileIndices[i] * TileSizeBytes);
-        //    }
-        //}
-        //
-        //tileMap.Apply(false, true);
-
-        Texture2D mapTex = new Texture2D(32 * header.mapx / 4, 32 * header.mapy / 4, TextureFormat.DXT1, true);
-
-        var tc = TextureCompressionInfo.Get(mapTex);
-
-        var outData = new RawTextureData(mapTex, tc);
-
-        TextureCompression.Clear(tc, outData, AtlasClearColor.Grey);
-
-        for (int y = 0; y < header.mapy / 4; ++y)
-        {
-            for (int x = 0; x < header.mapx / 4; ++x)
-            {
-                int tileIndex = tileIndices[(header.mapx / 4) * y + x];
-                var texData = new RawTextureData(tiles[tileIndex], 32, 32, 4, tc);
-                TextureCompression.CopyTexture(tc, texData, outData, x * 32, y * 32, 32, 32);
-            }
-        }
-
-        mapTex.Apply();
-
-        var root = CreateMapObject(data);
-
-        var material = root.GetComponentInChildren<MeshRenderer>().sharedMaterial;
-
-        ///material.SetTexture("_TileMap", tileMap);
-        material.SetTexture("_Map", mapTex);
+        var root = CreateMapObject(header, data, tileIndices, tiles);
 
         return root;
     }
@@ -188,34 +148,77 @@ public static unsafe class SMFUnity
 		return height;
 	}
 
-    const int chunkSize = 32;
+    const int ChunkSize = 32;
+    const int TexChunkSize = 128; // 1024 pixels
 
-    public static GameObject CreateMapObject(SMFData data)
+    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy)
+    {
+        Texture2D mapTex = new Texture2D(TexChunkSize * header.texelPerSquare, TexChunkSize * header.texelPerSquare, TextureFormat.DXT1, 4, false);
+        mapTex.name = $"MapTexture_{ox}_{oy}";
+
+        //mapTex.wrapMode = TextureWrapMode.Clamp;
+
+        var tc = TextureCompressionInfo.Get(mapTex);
+        var outData = new RawTextureData(mapTex, tc);
+
+        TextureCompression.Clear(tc, outData, AtlasClearColor.Grey);
+
+        ox /= 4;
+        oy /= 4;
+
+        for (int y = 0; y < TexChunkSize / 4; ++y)
+        {
+            for (int x = 0; x < TexChunkSize / 4; ++x)
+            {
+                int tileIndex = tileIndices[(header.mapx / 4) * (oy + y) + (ox + x)];
+                var texData = new RawTextureData(tiles[tileIndex], 32, 32, 4, tc);
+                TextureCompression.CopyTexture(tc, texData, outData, x * 32, y * 32, 32, 32);
+            }
+        }
+
+        mapTex.Apply();
+
+        var material = new Material(Shader.Find("Custom/Splat"));
+        material.name = $"MapMaterial_{ox}_{oy}";
+        material.SetTexture("_Map", mapTex);
+        material.SetFloat("_ChunksX", (float)data.resX / TexChunkSize);
+        material.SetFloat("_ChunksY", (float)data.resY / TexChunkSize);
+
+        return material;
+    }
+
+    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles)
 	{
         GameObject rootGO = new GameObject("Map");
 
-        int divisionsX = data.resX / chunkSize;
-        int divisionsY = data.resY / chunkSize;
+        int TexDivisionsX = data.resX / TexChunkSize;
+        int TexDivisionsY = data.resY / TexChunkSize;
 
-        m_tempVerts = new List<Vector3>(chunkSize * chunkSize);
-        m_tempUV = new List<Vector2>(chunkSize * chunkSize);
-        m_tempNormals = new List<Vector3>(chunkSize * chunkSize);
-        m_tempTriangles = new List<int>(chunkSize * chunkSize * 6);
+        Material[] materials = new Material[TexDivisionsX * TexDivisionsY];
+        for (int y = 0; y < TexDivisionsY; ++y)
+        {
+            for (int x = 0; x < TexDivisionsX; ++x)
+            {
+                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize);
+            }
+        }
 
-        //m_splatMap = new Texture2D(m_resX, m_resY);
-        //m_splatMap.SetPixels(colors);
-        //m_splatMap.Apply();
-        //
-        //m_material = Object.Instantiate(material);
-        //SetMaterialProps();
+        int divisionsX = data.resX / ChunkSize;
+        int divisionsY = data.resY / ChunkSize;
 
-        var material = new Material(Shader.Find("Custom/Splat"));
+        m_tempVerts = new List<Vector3>(ChunkSize * ChunkSize);
+        m_tempUV = new List<Vector2>(ChunkSize * ChunkSize);
+        m_tempNormals = new List<Vector3>(ChunkSize * ChunkSize);
+        m_tempTriangles = new List<int>(ChunkSize * ChunkSize * 6);
 
         for (int x = 0; x < divisionsX; ++x)
         {
             for (int y = 0; y < divisionsY; ++y)
             {
-                GenerateChunk(data, rootGO, material, x * chunkSize, y * chunkSize, chunkSize, chunkSize);
+                var tx = x * TexDivisionsX / divisionsX;
+                var ty = y * TexDivisionsY / divisionsY;
+
+                GenerateChunk(data, rootGO, materials[tx + ty * TexDivisionsX], x * ChunkSize, y * ChunkSize, ChunkSize, ChunkSize);
             }
         }
 
@@ -245,6 +248,8 @@ public static unsafe class SMFUnity
             lods[i].renderers = new Renderer[] { lod.GetComponent<Renderer>() };
             lods[i].screenRelativeTransitionHeight = 1.0f / (stride);
         }
+
+        lods[lods.Length-1].screenRelativeTransitionHeight = 0;
 
         lodGroup.SetLODs(lods);
     }
