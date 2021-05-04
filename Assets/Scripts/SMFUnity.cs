@@ -18,45 +18,19 @@ public static unsafe class SMFUnity
         var dir = Path.GetDirectoryName(smfPath);
 
         SMFData data;
-        SMFHeader header;
-        MapTileHeader mapTileHeader;
-        TileFileInfo[] tileFiles;
-        int[] tileIndices;
 
         using (BinaryReader reader = new BinaryReader(File.OpenRead(smfPath)))
         {
-            header = LoadHeader(reader);
-            data = LoadData(reader, header);
-
-            reader.BaseStream.Position = header.tilesPtr;
-            mapTileHeader = reader.ReadStruct<MapTileHeader>();
-
-            tileFiles = new TileFileInfo[mapTileHeader.numTileFiles];
-
-            if (mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4))
-                throw new System.Exception("mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4)");
-
-            for (int i = 0; i < mapTileHeader.numTileFiles; ++i)
-            {
-                tileFiles[i].numTiles = reader.ReadInt32();
-                tileFiles[i].fileName = reader.ReadNullTerminatedString();
-            }
-
-            var tileIndicesBytes = reader.ReadBytes(sizeof(int) * (header.mapx / 4) * (header.mapy / 4));
-            tileIndices = new int[(header.mapx / 4) * (header.mapy / 4)];
-            System.Buffer.BlockCopy(tileIndicesBytes, 0, tileIndices, 0, tileIndicesBytes.Length);
+            data = LoadSMF(reader);
         }
 
-        var tiles = new byte[mapTileHeader.numTiles][];
-        var offset = 0;
-
-        for (int i = 0; i < mapTileHeader.numTileFiles; ++i)
+        var tiles = LoadTileFiles(data, (name) =>
         {
-            var tileFilePath = Path.Combine(dir, tileFiles[i].fileName);
-            LoadTileFile(tileFilePath, tiles, ref offset, tileFiles[i].numTiles);
-        }
+            var tileFilePath = Path.Combine(dir, name);
+            return new BinaryReader(File.OpenRead(tileFilePath));
+        });
 
-        var root = CreateMapObject(header, data, tileIndices, tiles);
+        var root = CreateMapObject(data.header, data, data.tileIndices, tiles);
 
         return root;
     }
@@ -71,36 +45,47 @@ public static unsafe class SMFUnity
         return header;
     }
 
-    public static void LoadTileFile(string path, byte[][] tiles, ref int offset, int numTiles)
+    public static byte[][] LoadTileFiles(SMFData data, System.Func<string, BinaryReader> getReader)
     {
-        using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
+        var tiles = new byte[data.mapTileHeader.numTiles][];
+        var offset = 0;
+
+        for (int i = 0; i < data.mapTileHeader.numTileFiles; ++i)
         {
-            var header = LoadTileFileHeader(reader);
+            var reader = getReader(data.tileFiles[i].fileName);
+            LoadTileFile(reader, tiles, ref offset, data.tileFiles[i].numTiles);
+            reader.Close();
+        }
+
+        return tiles;
+    }
+
+    public static void LoadTileFile(BinaryReader reader, byte[][] tiles, ref int offset, int numTiles)
+    {
+        var header = LoadTileFileHeader(reader);
             
-            if (header.numTiles != numTiles)
-                throw new System.Exception("header.numTiles != numTiles");
+        if (header.numTiles != numTiles)
+            throw new System.Exception("header.numTiles != numTiles");
 
-            if (header.tileSize != 32)
-                throw new System.Exception("header.tileSize != 32");
+        if (header.tileSize != 32)
+            throw new System.Exception("header.tileSize != 32");
 
-            if (header.compressionType != 1)
-                throw new System.Exception("header.compressionType != 1");
+        if (header.compressionType != 1)
+            throw new System.Exception("header.compressionType != 1");
 
-            //int bytesToRead = numTiles * TileSizeBytes;
-            //
-            //if (reader.Read(tileData, offset, bytesToRead) != bytesToRead)
-            //    throw new System.Exception("out of bounds");
-            //
-            //offset += bytesToRead;
+        //int bytesToRead = numTiles * TileSizeBytes;
+        //
+        //if (reader.Read(tileData, offset, bytesToRead) != bytesToRead)
+        //    throw new System.Exception("out of bounds");
+        //
+        //offset += bytesToRead;
 
-            for (int i = 0; i < numTiles; ++i)
-            {
-                var bytes = reader.ReadBytes(TileSizeBytes);
-                if (bytes.Length != TileSizeBytes)
-                    throw new System.Exception("out of bounds");
-                tiles[offset++] = bytes;
-            }
-
+        for (int i = 0; i < numTiles; ++i)
+        {
+            var bytes = reader.ReadBytes(TileSizeBytes);
+            if (bytes.Length != TileSizeBytes)
+                throw new System.Exception("out of bounds");
+            tiles[offset++] = bytes;
         }
     }
 
@@ -111,7 +96,7 @@ public static unsafe class SMFUnity
 		var magic = new string((sbyte*)header.magic);
 
 		if (magic != SMFHeader.Magic)
-			throw new System.Exception("Not a Spring unit file: " + magic);
+			throw new System.Exception("Invalid Magic string: " + magic);
 
 		if (header.version != 1)
 			throw new System.Exception("Invalid version: " + header.version);
@@ -119,14 +104,36 @@ public static unsafe class SMFUnity
 		return header;
 	}
 
-	public static SMFData LoadData(BinaryReader reader, SMFHeader header)
+	public static SMFData LoadSMF(BinaryReader reader)
 	{
 		SMFData data;
+        var header = LoadHeader(reader);
+
+        data.header = header;
         data.resX = header.mapx + 1;
         data.resY = header.mapy + 1;
         data.scale = header.squareSize;
 		data.heightMap = LoadHeightMap(reader, header);
-		return data;
+
+        reader.BaseStream.Position = header.tilesPtr;
+        data.mapTileHeader = reader.ReadStruct<MapTileHeader>();
+
+        data.tileFiles = new TileFileInfo[data.mapTileHeader.numTileFiles];
+
+        if (data.mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4))
+            throw new System.Exception("mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4)");
+
+        for (int i = 0; i < data.mapTileHeader.numTileFiles; ++i)
+        {
+            data.tileFiles[i].numTiles = reader.ReadInt32();
+            data.tileFiles[i].fileName = reader.ReadNullTerminatedString();
+        }
+
+        var tileIndicesBytes = reader.ReadBytes(sizeof(int) * (header.mapx / 4) * (header.mapy / 4));
+        data.tileIndices = new int[(header.mapx / 4) * (header.mapy / 4)];
+        System.Buffer.BlockCopy(tileIndicesBytes, 0, data.tileIndices, 0, tileIndicesBytes.Length);
+
+        return data;
 	}
 
 	public static float[] LoadHeightMap(BinaryReader reader, SMFHeader header)

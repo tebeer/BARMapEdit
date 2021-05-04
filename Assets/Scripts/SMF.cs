@@ -72,6 +72,10 @@ public unsafe struct TileFileHeader
 [StructLayout(LayoutKind.Sequential)]
 public struct SMFData
 {
+	public SMFHeader header;
+	public MapTileHeader mapTileHeader;
+	public TileFileInfo[] tileFiles;
+	public int[] tileIndices;
 	public float[] heightMap;
 	public int resX;
 	public int resY;

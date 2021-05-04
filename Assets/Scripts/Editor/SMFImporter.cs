@@ -11,6 +11,12 @@ public class SMFImporter : ScriptedImporter
     public override void OnImportAsset(AssetImportContext ctx)
     {
         var map = SMFUnity.Load(ctx.assetPath);
+
+        AddMapObject(ctx, map);
+    }
+
+    public static void AddMapObject(AssetImportContext ctx, GameObject map)
+    {
         AddRecursive(ctx, map);
         ctx.SetMainObject(map);
 
@@ -26,7 +32,7 @@ public class SMFImporter : ScriptedImporter
         }
     }
 
-    private void AddRecursive(AssetImportContext ctx, GameObject go)
+    private static void AddRecursive(AssetImportContext ctx, GameObject go)
     {
         ctx.AddObjectToAsset(go.name, go);
         var mf = go.GetComponent<MeshFilter>();
