@@ -20,15 +20,18 @@ public class SMFImporter : ScriptedImporter
         AddRecursive(ctx, map);
         ctx.SetMainObject(map);
 
-        var materials = new HashSet<Material>();
+        var objects = new HashSet<Object>();
         foreach (var mr in map.GetComponentsInChildren<MeshRenderer>())
-            materials.Add(mr.sharedMaterial);
-
-        foreach (var m in materials)
         {
-            ctx.AddObjectToAsset(m.name, m);
-            var mapTex = m.GetTexture("_Map");
-            ctx.AddObjectToAsset(mapTex.name, mapTex);
+            objects.Add(mr.sharedMaterial);
+            objects.Add(mr.sharedMaterial.GetTexture("_Map"));
+            objects.Add(mr.sharedMaterial.GetTexture("_Normal"));
+        }
+
+        foreach (var o in objects)
+        {
+            if(o != null)
+                ctx.AddObjectToAsset(o.name, o);
         }
     }
 

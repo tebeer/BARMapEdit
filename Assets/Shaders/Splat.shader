@@ -38,12 +38,18 @@ Shader "Custom/Splat"
         struct Input
         {
             float2 uv_Map;
+            float2 chunkCoords;
+            float2 normalCoords;
         };
 
-        void vert(inout appdata_full v)
+        void vert(inout appdata_full v, out Input o)
         {
-            v.texcoord.x = (_ChunksX * v.texcoord.x);
-            v.texcoord.y = (_ChunksY * v.texcoord.y);
+            UNITY_INITIALIZE_OUTPUT(Input, o);
+            //v.texcoord = v.texcoord;
+            o.chunkCoords.x = (_ChunksX * v.texcoord.x);
+            o.chunkCoords.y = (_ChunksY * v.texcoord.y);
+            o.normalCoords = v.texcoord;
+            o.normalCoords.y = 1 - o.normalCoords.y;
         }
 
         void surf (Input IN, inout SurfaceOutputStandard o)
@@ -51,10 +57,10 @@ Shader "Custom/Splat"
             //float2 uv_Chunk = float2(_ChunksX * IN.uv_Map.x, _ChunksY * IN.uv_Map.y);
             //uv_Chunk = frac(uv_Chunk);
 
-            fixed4 map = tex2D(_Map, IN.uv_Map);
+            fixed4 map = tex2D(_Map, IN.chunkCoords);
 
             o.Albedo = map.rgb;//splat.rgb;
-            o.Normal = UnpackNormal(tex2D(_Normal, IN.uv_Map));
+            o.Normal = UnpackNormal(tex2D(_Normal, IN.normalCoords));
             o.Alpha = 1;
         }
         ENDCG

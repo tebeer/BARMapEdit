@@ -22,6 +22,8 @@ public static unsafe class SMFUnity
         using (BinaryReader reader = new BinaryReader(File.OpenRead(smfPath)))
         {
             data = LoadSMF(reader);
+
+            data.heightMap = LoadHeightMap(reader, data.header);
         }
 
         var tiles = LoadTileFiles(data, (name) =>
@@ -30,7 +32,7 @@ public static unsafe class SMFUnity
             return new BinaryReader(File.OpenRead(tileFilePath));
         });
 
-        var root = CreateMapObject(data.header, data, data.tileIndices, tiles);
+        var root = CreateMapObject(data.header, data, data.tileIndices, tiles, null);
 
         return root;
     }
@@ -113,7 +115,8 @@ public static unsafe class SMFUnity
         data.resX = header.mapx + 1;
         data.resY = header.mapy + 1;
         data.scale = header.squareSize;
-		data.heightMap = LoadHeightMap(reader, header);
+        
+        data.heightMap = null;
 
         reader.BaseStream.Position = header.tilesPtr;
         data.mapTileHeader = reader.ReadStruct<MapTileHeader>();
@@ -158,7 +161,7 @@ public static unsafe class SMFUnity
     const int ChunkSize = 32;
     const int TexChunkSize = 128; // 1024 pixels
 
-    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy)
+    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy, Texture2D normalMap)
     {
         Texture2D mapTex = new Texture2D(TexChunkSize * header.texelPerSquare, TexChunkSize * header.texelPerSquare, TextureFormat.DXT1, 4, false);
         mapTex.name = $"MapTexture_{ox}_{oy}";
@@ -190,11 +193,12 @@ public static unsafe class SMFUnity
         material.SetTexture("_Map", mapTex);
         material.SetFloat("_ChunksX", (float)data.resX / TexChunkSize);
         material.SetFloat("_ChunksY", (float)data.resY / TexChunkSize);
+        material.SetTexture("_Normal", normalMap);
 
         return material;
     }
 
-    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles)
+    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, Texture2D normalMap)
 	{
         GameObject rootGO = new GameObject("Map");
 
@@ -206,7 +210,7 @@ public static unsafe class SMFUnity
         {
             for (int x = 0; x < TexDivisionsX; ++x)
             {
-                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize);
+                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize, normalMap);
             }
         }
 

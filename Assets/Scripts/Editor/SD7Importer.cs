@@ -49,6 +49,9 @@ public class SD7Importer : ScriptedImporter
     {
         SMFData data;
         byte[][] tiles;
+        Script mapInfoScript;
+        Table mapInfoTable;
+        Texture2D normalMap;
 
         using (var sd7File = new ArchiveFile(ctx.assetPath))
         {
@@ -56,9 +59,7 @@ public class SD7Importer : ScriptedImporter
 
             var mapInfoLua = mapInfoEntry.ExtractAsString();
 
-            Debug.Log(mapInfoLua);
-
-            var mapInfoScript = new Script();
+            mapInfoScript = new Script();
             DynValue root = null;
 
             var VFS = new Table(mapInfoScript);
@@ -69,8 +70,6 @@ public class SD7Importer : ScriptedImporter
             m_dummy = new Table(mapInfoScript);
             mapInfoScript.Globals["getfenv"] = (System.Func<Table>)getfenv;
 
-            //mapInfoScript.Options.DebugPrint = (str) => Debug.Log(str);
-            //mapInfoScript.Options.UseLuaErrorLocations = false;
             try
             {
                 root = mapInfoScript.DoString(mapInfoLua);
@@ -80,7 +79,7 @@ public class SD7Importer : ScriptedImporter
                 Debug.LogError("Lua error: " + ex.DecoratedMessage);
             }
 
-            var mapInfoTable = root.Table;
+            mapInfoTable = root.Table;
 
             var mapFileName = mapInfoTable.Get("mapfile").String;
 
@@ -92,6 +91,13 @@ public class SD7Importer : ScriptedImporter
                 using (BinaryReader reader = new BinaryReader(memoryStream))
                 {
                     data = SMFUnity.LoadSMF(reader);
+
+                    var smfTable = mapInfoTable.Get("smf").Table;
+
+                    data.header.minHeight = (float)smfTable.Get("minheight").Number;
+                    data.header.maxHeight = (float)smfTable.Get("maxheight").Number;
+
+                    data.heightMap = SMFUnity.LoadHeightMap(reader, data.header);
                 }
             }
 
@@ -109,10 +115,49 @@ public class SD7Importer : ScriptedImporter
                 return new BinaryReader(memoryStream);
             });
 
+            var resources = mapInfoTable.Get("resources").Table;
+            string normalTexName = resources.Get("detailnormaltex").String;
+
+            normalMap = LoadDDSTexture(sd7File, normalTexName);
+            normalMap.name = "detailnormaltex";
         }
 
-        var map = SMFUnity.CreateMapObject(data.header, data, data.tileIndices, tiles);
+        var map = SMFUnity.CreateMapObject(data.header, data, data.tileIndices, tiles, normalMap);
 
         SMFImporter.AddMapObject(ctx, map);
     }
+
+    private Texture2D LoadDDSTexture(ArchiveFile sd7File, string name)
+    {
+        var entry = sd7File.GetEntry("maps/"+name);
+
+        using (var memoryStream = new MemoryStream())
+        {
+            entry.Extract(memoryStream);
+
+            var ddsBytes = memoryStream.GetBuffer();
+            int ddsBytesLength = (int)memoryStream.Position;
+
+            byte ddsSizeCheck = ddsBytes[4];
+            if (ddsSizeCheck != 124)
+                throw new System.Exception("Invalid DDS DXTn texture. Unable to read");  //this header byte should be 124 for DDS image files
+
+            int height = ddsBytes[13] * 256 + ddsBytes[12];
+            int width = ddsBytes[17] * 256 + ddsBytes[16];
+
+            int DDS_HEADER_SIZE = 128;
+            byte[] dxtBytes = new byte[ddsBytesLength - DDS_HEADER_SIZE];
+            System.Buffer.BlockCopy(ddsBytes, DDS_HEADER_SIZE, dxtBytes, 0, ddsBytesLength - DDS_HEADER_SIZE);
+
+            int mipmapCount = ddsBytes[24];
+            Debug.Log(mipmapCount);
+
+            Texture2D texture = new Texture2D(width, height, TextureFormat.DXT1, Mathf.Max(mipmapCount, 1), false);
+            texture.LoadRawTextureData(dxtBytes);
+            texture.Apply();
+
+            return texture;
+        }
+    }
+
 }
