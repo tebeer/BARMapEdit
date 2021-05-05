@@ -12,8 +12,7 @@ public class CameraControls : MonoBehaviour
     void Start()
     {
         Application.targetFrameRate = 60;
-        m_euler = pivot.eulerAngles;
-        m_position = pivot.position;
+
     }
 
     // Update is called once per frame
@@ -27,32 +26,30 @@ public class CameraControls : MonoBehaviour
         }
 
         var delta = currentMousePos - m_prevMousePos;
+        m_prevMousePos = currentMousePos;
+
         var localPos = transform.localPosition;
+        var euler = pivot.eulerAngles;
+        var position = pivot.position;
 
         if ((Input.GetKey(KeyCode.LeftAlt) && Input.GetMouseButton(0)) || Input.GetMouseButton(1))
         {
-            m_euler += rotationSensitivity * new Vector3(-delta.y, delta.x, 0);
+            euler += rotationSensitivity * new Vector3(-delta.y, delta.x, 0);
         }
         else if (Input.GetMouseButton(2))
         {
-            m_position -= (localPos.z * panningSensitivity) * (Quaternion.Euler(0, m_euler.y, 0) *  new Vector3(delta.x, 0, delta.y));
+            position -= (localPos.z * panningSensitivity) * (Quaternion.Euler(0, euler.y, 0) *  new Vector3(delta.x, 0, delta.y));
         }
 
         var scoll = Input.mouseScrollDelta;
 
         localPos.z *= (1.0f + scoll.y * scrollSensitivity);
 
-
         transform.localPosition = localPos;
 
-
-        m_prevMousePos = currentMousePos;
-        pivot.rotation = Quaternion.Euler(m_euler);
-        pivot.position = m_position;
+        pivot.rotation = Quaternion.Euler(euler);
+        pivot.position = position;
     }
 
     private Vector3 m_prevMousePos;
-
-    private Vector3 m_euler;
-    private Vector3 m_position;
 }

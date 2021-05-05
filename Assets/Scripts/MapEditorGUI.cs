@@ -1,35 +1,41 @@
 using UnityEngine;
 using UnityEngine.UI;
-using MoonSharp.Interpreter;
 
 public class MapEditorGUI : MonoBehaviour
 {
     public Button loadButton;
+    public CameraControls cameraControls;
 
     void Start()
     {
         loadButton.onClick.AddListener(() =>
         {
-            var paths = SFB.StandaloneFileBrowser.OpenFilePanel("Open File", "", "", false);
-            //S3OUnity.CreateGameObject(paths[0]);
-            var scriptText = System.IO.File.ReadAllText(paths[0]);
-            //Debug.Log(script);
-            var root = Script.RunString(scriptText);
-            var mapinfo = root.Table;
-            Debug.Log(mapinfo.Get("name").String);
+            var paths = SFB.StandaloneFileBrowser.OpenFilePanel("Open File", "", "sd7", false);
 
-            var resources = mapinfo.Get("resources").Table;
-            foreach (var key in resources.Keys)
-            {
-                Debug.Log(key.Type + " " + key.String);
-            }
-            //Debug.Log();//(resources.Get("detailTex").String);
+            if (paths.Length == 0)
+                return;
+
+            if (m_mapData != null && m_mapData.mapGameObject != null)
+                Destroy(m_mapData.mapGameObject);
+
+            m_mapData = SD7Unity.LoadSD7(paths[0]);
+
+            float maxHeight = float.MinValue;
+
+            var hmap = m_mapData.smfData.heightMap;
+
+            for (int i = 0; i < hmap.Length; ++i)
+                if (hmap[i] > maxHeight)
+                    maxHeight = hmap[i];
+
+            var resX = m_mapData.smfData.resX;
+            var resY = m_mapData.smfData.resY;
+            var scale = m_mapData.smfData.scale;
+
+            cameraControls.pivot.transform.position = new Vector3(resX * scale / 2, maxHeight, -resY * scale / 2);
+            cameraControls.transform.localPosition = new Vector3(0, 0, -resX * scale / 2);
         });
-
     }
 
-    void Update()
-    {
-        
-    }
+    private MapData m_mapData;
 }

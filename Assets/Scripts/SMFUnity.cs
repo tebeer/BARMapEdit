@@ -188,7 +188,7 @@ public static unsafe class SMFUnity
 
         mapTex.Apply();
 
-        var material = new Material(Shader.Find("Custom/Splat"));
+        var material = new Material(Shader.Find("Custom/Terrain"));
         material.name = $"MapMaterial_{ox}_{oy}";
         material.SetTexture("_Map", mapTex);
         material.SetFloat("_ChunksX", (float)data.resX / TexChunkSize);
