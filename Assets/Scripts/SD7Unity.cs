@@ -34,6 +34,16 @@ public class MapData
     public Table mapInfoTable;
 }
 
+public struct MapTextures
+{
+    public Texture2D detailNormalTex;
+    public Texture2D splatDistrTex;
+    public Texture2D splatDetailNormalTex1;
+    public Texture2D splatDetailNormalTex2;
+    public Texture2D splatDetailNormalTex3;
+    public Texture2D splatDetailNormalTex4;
+}
+
 public static class SD7Unity
 {
     public static MapData LoadSD7(string path)
@@ -41,7 +51,7 @@ public static class SD7Unity
         var mapData = new MapData();
 
         byte[][] tiles;
-        Texture2D normalMap;
+        MapTextures textures;
 
         using (var sd7File = new ArchiveFile(path))
         {
@@ -106,16 +116,19 @@ public static class SD7Unity
             });
 
             var resources = mapData.mapInfoTable.Get("resources").Table;
-            string normalTexName = resources.Get("detailnormaltex").String;
 
-            normalMap = LoadDDSTexture(sd7File, normalTexName);
-            normalMap.name = "detailnormaltex";
+            textures.detailNormalTex = LoadTexture(sd7File, resources.Get("detailnormaltex").String, false);
+            textures.splatDistrTex = LoadTexture(sd7File, resources.Get("splatdistrtex").String, true);
+            textures.splatDetailNormalTex1 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex1").String, false);
+            textures.splatDetailNormalTex2 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex2").String, false);
+            textures.splatDetailNormalTex3 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex3").String, false);
+            textures.splatDetailNormalTex4 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex4").String, false);
         }
 
         foreach (var kv in mapData.mapInfoTable.Keys)
             Debug.Log(kv.Type + " " + kv.String);
 
-        mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, tiles, normalMap);
+        mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, tiles, textures);
 
         var atmosphereTable = mapData.mapInfoTable.Get("atmosphere").Table;
         var sunColor = atmosphereTable.GetColor("suncolor");
@@ -186,35 +199,118 @@ public static class SD7Unity
         return go;
     }
 
-    private static Texture2D LoadDDSTexture(ArchiveFile sd7File, string name)
+    private static Texture2D LoadTexture(ArchiveFile sd7File, string name, bool alpha)
     {
         var entry = sd7File.GetEntry("maps/" + name);
+
+        Texture2D tex;
+        byte[] bytes;
+
+        //Debug.Log("LoadTexture " + name);
 
         using (var memoryStream = new MemoryStream())
         {
             entry.Extract(memoryStream);
+            bytes = memoryStream.ToArray();
+        }
 
-            var ddsBytes = memoryStream.GetBuffer();
-            int ddsBytesLength = (int)memoryStream.Position;
+        var ext = Path.GetExtension(name).ToLower();
+        if (ext == ".dds")
+            tex = LoadDDSTexture(bytes, alpha);
+        else if (ext == ".tga")
+            tex = LoadTGATexture(bytes, alpha);
+        else
+            tex = LoadSupportedTexture(bytes, alpha);
 
-            byte ddsSizeCheck = ddsBytes[4];
-            if (ddsSizeCheck != 124)
-                throw new System.Exception("Invalid DDS DXTn texture. Unable to read");  //this header byte should be 124 for DDS image files
+        tex.name = name;
+        return tex;
+    }
 
-            int height = ddsBytes[13] * 256 + ddsBytes[12];
-            int width = ddsBytes[17] * 256 + ddsBytes[16];
+    private static Texture2D LoadSupportedTexture(byte[] bytes, bool alpha)
+    {
+        Texture2D tex = new Texture2D(2, 2);// alpha ? TextureFormat.DXT5: TextureFormat.DXT1, true);
+        if (!tex.LoadImage(bytes))
+            return null;
+        return tex;
+    }
 
-            int DDS_HEADER_SIZE = 128;
-            byte[] dxtBytes = new byte[ddsBytesLength - DDS_HEADER_SIZE];
-            System.Buffer.BlockCopy(ddsBytes, DDS_HEADER_SIZE, dxtBytes, 0, ddsBytesLength - DDS_HEADER_SIZE);
+    private static Texture2D LoadDDSTexture(byte[] bytes, bool alpha)
+    {
+        byte ddsSizeCheck = bytes[4];
+        if (ddsSizeCheck != 124)
+            throw new System.Exception("Invalid DDS DXTn texture. Unable to read");  //this header byte should be 124 for DDS image files
 
-            int mipmapCount = ddsBytes[24];
+        int height = bytes[13] * 256 + bytes[12];
+        int width = bytes[17] * 256 + bytes[16];
 
-            Texture2D texture = new Texture2D(width, height, TextureFormat.DXT1, Mathf.Max(mipmapCount, 1), false);
-            texture.LoadRawTextureData(dxtBytes);
-            texture.Apply();
+        int DDS_HEADER_SIZE = 128;
+        byte[] dxtBytes = new byte[bytes.Length - DDS_HEADER_SIZE];
+        System.Buffer.BlockCopy(bytes, DDS_HEADER_SIZE, dxtBytes, 0, bytes.Length - DDS_HEADER_SIZE);
 
-            return texture;
+        int mipmapCount = bytes[28];
+
+        //int flags = bytes[80];
+        //int fourCC = bytes[84];
+        //int dxt1Size = width * height / 2;
+        //Debug.Log(fourCC + " " + mipmapCount + " " + dxt1Size + " " + dxtBytes.Length);
+
+        Texture2D texture = new Texture2D(width, height, alpha ? TextureFormat.DXT5 : TextureFormat.DXT1, Mathf.Max(mipmapCount, 1), false);
+        texture.LoadRawTextureData(dxtBytes);
+        texture.Apply();
+
+        return texture;
+    }
+
+    public static Texture2D LoadTGATexture(byte[] bytes, bool usealpha)
+    {
+        using (BinaryReader r = new BinaryReader(new MemoryStream(bytes)))
+        {
+            // Skip some header info we don't care about.
+            // Even if we did care, we have to move the stream seek point to the beginning,
+            // as the previous method in the workflow left it at the end.
+            r.BaseStream.Seek(12, SeekOrigin.Begin);
+
+            short width = r.ReadInt16();
+            short height = r.ReadInt16();
+            int bitDepth = r.ReadByte();
+
+            // Skip a byte of header information we don't care about.
+            r.BaseStream.Seek(1, SeekOrigin.Current);
+
+            Texture2D tex = new Texture2D(width, height);
+            Color32[] pulledColors = new Color32[width * height];
+
+            if (bitDepth == 32)
+            {
+                for (int i = 0; i < width * height; i++)
+                {
+                    byte red = r.ReadByte();
+                    byte green = r.ReadByte();
+                    byte blue = r.ReadByte();
+                    byte alpha = r.ReadByte();
+
+                    pulledColors[i] = new Color32(blue, green, red, alpha);
+                }
+            }
+            else if (bitDepth == 24)
+            {
+                for (int i = 0; i < width * height; i++)
+                {
+                    byte red = r.ReadByte();
+                    byte green = r.ReadByte();
+                    byte blue = r.ReadByte();
+
+                    pulledColors[i] = new Color32(blue, green, red, 1);
+                }
+            }
+            else
+            {
+                throw new System.Exception("TGA texture had non 32/24 bit depth.");
+            }
+
+            tex.SetPixels32(pulledColors);
+            tex.Apply();
+            return tex;
         }
     }
 

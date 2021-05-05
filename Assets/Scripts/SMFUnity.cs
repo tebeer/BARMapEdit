@@ -32,7 +32,7 @@ public static unsafe class SMFUnity
             return new BinaryReader(File.OpenRead(tileFilePath));
         });
 
-        var root = CreateMapObject(data.header, data, data.tileIndices, tiles, null);
+        var root = CreateMapObject(data.header, data, data.tileIndices, tiles, default);
 
         return root;
     }
@@ -124,7 +124,7 @@ public static unsafe class SMFUnity
         data.tileFiles = new TileFileInfo[data.mapTileHeader.numTileFiles];
 
         if (data.mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4))
-            throw new System.Exception("mapTileHeader.numTiles != (header.mapx / 4) * (header.mapy / 4)");
+            Debug.LogWarning($"mapTileHeader.numTiles ({data.mapTileHeader.numTiles}) != (header.mapx / 4) * (header.mapy / 4) ({(header.mapx / 4) * (header.mapy / 4)}) ");
 
         for (int i = 0; i < data.mapTileHeader.numTileFiles; ++i)
         {
@@ -161,7 +161,7 @@ public static unsafe class SMFUnity
     const int ChunkSize = 32;
     const int TexChunkSize = 128; // 1024 pixels
 
-    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy, Texture2D normalMap)
+    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy, MapTextures textures)
     {
         Texture2D mapTex = new Texture2D(TexChunkSize * header.texelPerSquare, TexChunkSize * header.texelPerSquare, TextureFormat.DXT1, 4, false);
         mapTex.name = $"MapTexture_{ox}_{oy}";
@@ -193,12 +193,17 @@ public static unsafe class SMFUnity
         material.SetTexture("_Map", mapTex);
         material.SetFloat("_ChunksX", (float)data.resX / TexChunkSize);
         material.SetFloat("_ChunksY", (float)data.resY / TexChunkSize);
-        material.SetTexture("_Normal", normalMap);
+        material.SetTexture("_Normal", textures.detailNormalTex);
+        material.SetTexture("_SplatDistr", textures.splatDistrTex);
+        material.SetTexture("_SplatDetailNormal1", textures.splatDetailNormalTex1);
+        material.SetTexture("_SplatDetailNormal2", textures.splatDetailNormalTex2);
+        material.SetTexture("_SplatDetailNormal3", textures.splatDetailNormalTex3);
+        material.SetTexture("_SplatDetailNormal4", textures.splatDetailNormalTex4);
 
         return material;
     }
 
-    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, Texture2D normalMap)
+    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, MapTextures textures)
 	{
         GameObject rootGO = new GameObject("Map");
 
@@ -210,7 +215,7 @@ public static unsafe class SMFUnity
         {
             for (int x = 0; x < TexDivisionsX; ++x)
             {
-                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize, normalMap);
+                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize, textures);
             }
         }
 

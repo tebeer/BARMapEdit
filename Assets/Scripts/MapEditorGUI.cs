@@ -4,10 +4,28 @@ using UnityEngine.UI;
 public class MapEditorGUI : MonoBehaviour
 {
     public Button loadButton;
+    public Button loadImageButton;
     public CameraControls cameraControls;
 
     void Start()
     {
+        loadImageButton.onClick.AddListener(() =>
+        {
+            var paths = SFB.StandaloneFileBrowser.OpenFilePanel("Open File", "", "tga", false);
+
+            if (paths.Length == 0)
+                return;
+
+            var bytes = System.IO.File.ReadAllBytes(paths[0]);
+
+            var tex = new Texture2D(2, 2);
+            tex.LoadImage(bytes);
+
+            Debug.Log(bytes.Length);
+            Debug.Log(tex.width + " " + tex.height);
+
+        });
+
         loadButton.onClick.AddListener(() =>
         {
             var paths = SFB.StandaloneFileBrowser.OpenFilePanel("Open File", "", "sd7", false);
