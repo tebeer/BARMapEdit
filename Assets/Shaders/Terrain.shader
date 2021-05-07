@@ -1,16 +1,21 @@
+// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+
 Shader "Custom/Terrain"
 {
     Properties
     {
         _Map("Map", 2D) = "white" {}
+        _Detail("Detail", 2D) = "white" {}
         _Normal("Normal", 2D) = "bump" {}
-        _ChunksX("ChunksX", Float) = 1
-        _ChunksY("ChunksY", Float) = 1
         _SplatDistr("SplatDistr", 2D) = "white" {}
         _SplatDetailNormal1("SplatDetailNormal1", 2D) = "bump" {}
         _SplatDetailNormal2("SplatDetailNormal2", 2D) = "bump" {}
         _SplatDetailNormal3("SplatDetailNormal3", 2D) = "bump" {}
         _SplatDetailNormal4("SplatDetailNormal4", 2D) = "bump" {}
+        _ChunksX("ChunksX", Float) = 1
+        _ChunksY("ChunksY", Float) = 1
+        _SplatScales("Splat scales", Vector) = (1, 1, 1, 1)
+        _SplatMults("Splat mults", Vector) = (1, 1, 1, 1)
     }
 
     SubShader
@@ -42,81 +47,172 @@ Shader "Custom/Terrain"
             struct v2f
             {
                 float4 pos : SV_POSITION;
-                float2 chunkCoords : TEXCOORD0;
+                float2 diffCoords : TEXCOORD0;
                 float2 normalCoords : TEXCOORD1;
-                UNITY_FOG_COORDS(2)
-                LIGHTING_COORDS(3, 4)
+                float3 worldPos : TEXCOORD2;
+                UNITY_FOG_COORDS(3)
+                LIGHTING_COORDS(4, 5)
             };
 
             sampler2D _Map;
+            sampler2D _Detail;
             sampler2D _Normal;
-            float _ChunksX;
-            float _ChunksY;
-            fixed4 _GroundDiffuseColor;
-
             sampler2D _SplatDistr;
             sampler2D _SplatDetailNormal1;
             sampler2D _SplatDetailNormal2;
             sampler2D _SplatDetailNormal3;
             sampler2D _SplatDetailNormal4;
 
+            float _ChunksX;
+            float _ChunksY;
+            fixed4 _GroundDiffuseColor;
+
+            float4 _Detail_TexelSize;
+
+            float4 _SplatScales;
+            float4 _SplatMults;
+
             v2f vert(appdata v)
             {
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
-                o.chunkCoords.x = (_ChunksX * v.uv.x);
-                o.chunkCoords.y = (_ChunksY * v.uv.y);
+                o.diffCoords.x = (_ChunksX * v.uv.x);
+                o.diffCoords.y = (_ChunksY * v.uv.y);
                 o.normalCoords = v.uv;
                 o.normalCoords.y = 1 - v.uv.y;
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex);
+
                 UNITY_TRANSFER_FOG(o,o.vertex);
                 TRANSFER_VERTEX_TO_FRAGMENT(o);
                 return o;
             }
 
+            fixed4 GetDetailTextureColor(float3 vertexPos)
+            {
+                float2 detailTexCoord = vertexPos.xz * _Detail_TexelSize.xy;
+                fixed4 detailCol = (tex2D(_Detail, detailTexCoord) * 2.0) - 1.0;
+                return detailCol;
+            }
+
+            float4 GetSplatDetailTextureNormal(float3 vertexPos, float2 uv, out float2 splatDetailStrength)
+            {
+                float4 splatTexCoord0 = vertexPos.xzxz * _SplatScales.rrgg;
+                float4 splatTexCoord1 = vertexPos.xzxz * _SplatScales.bbaa;
+                float4 splatDist = tex2D(_SplatDistr, uv) * _SplatMults;
+
+                splatDetailStrength.x = min(1.0, dot(splatDist, 1.0));
+
+                float4 splatDetailNormal;
+                splatDetailNormal = ((tex2D(_SplatDetailNormal1, splatTexCoord0.xy) * 2.0 - 1.0) * splatDist.r);
+                splatDetailNormal += ((tex2D(_SplatDetailNormal2, splatTexCoord0.zw) * 2.0 - 1.0) * splatDist.g);
+                splatDetailNormal += ((tex2D(_SplatDetailNormal3, splatTexCoord1.xy) * 2.0 - 1.0) * splatDist.b);
+                splatDetailNormal += ((tex2D(_SplatDetailNormal4, splatTexCoord1.zw) * 2.0 - 1.0) * splatDist.a);
+
+                // note: y=0.01 (pointing up) in case all splat-cofacs are zero
+                splatDetailNormal.y = max(splatDetailNormal.y, 0.01);
+
+                splatDetailStrength.y = clamp(splatDetailNormal.a, -1.0, 1.0);
+
+                return splatDetailNormal;
+            }
+
+#define SMF_INTENSITY_MULT (210.0 / 256.0) + (1.0 / 256.0) - (1.0 / 2048.0) - (1.0 / 4096.0)
+
+            float4 GetShadeInt(float groundLightInt, float groundShadowCoeff, float groundDiffuseAlpha)
+            {
+                float4 groundShadeInt = float4(0.0, 0.0, 0.0, 1.0);
+
+                groundShadeInt.rgb = unity_AmbientGround.rgb + _GroundDiffuseColor * (groundLightInt * groundShadowCoeff);
+                groundShadeInt.rgb *= SMF_INTENSITY_MULT;
+//
+//#ifdef SMF_VOID_WATER
+//                // cut out all underwater fragments indiscriminately
+//                groundShadeInt.a = float(vertexPos.y >= 0.0);
+//#endif
+//
+//#ifdef SMF_VOID_GROUND
+//                // assume the map(per)'s diffuse texture provides sensible alphas
+//                // note that voidground overrides voidwater if *both* are enabled
+//                // (limiting it to just above-water fragments would be arbitrary)
+//                groundShadeInt.a = groundDiffuseAlpha;
+//#endif
+//
+//#ifdef SMF_WATER_ABSORPTION
+//                // use groundShadeInt alpha value; allows voidground maps to create
+//                // holes in the seabed (SMF_WATER_ABSORPTION == 1 implies voidwater
+//                // is not enabled but says nothing about the voidground state)
+//                vec4 rawWaterShadeInt = vec4(waterBaseColor.rgb, groundShadeInt.a);
+//                vec4 modWaterShadeInt = rawWaterShadeInt;
+//
+//                { //if (mapHeights.x <= 0.0) {
+//                    float waterShadeAlpha = abs(vertexPos.y) * SMF_SHALLOW_WATER_DEPTH_INV;
+//                    float waterShadeDecay = 0.2 + (waterShadeAlpha * 0.1);
+//                    float vertexStepHeight = min(1023.0, -vertexPos.y);
+//                    float waterLightInt = min(groundLightInt * 2.0 + 0.4, 1.0);
+//
+//                    // vertex below shallow water depth --> alpha=1
+//                    // vertex above shallow water depth --> alpha=waterShadeAlpha
+//                    waterShadeAlpha = min(1.0, waterShadeAlpha + float(vertexPos.y <= -SMF_SHALLOW_WATER_DEPTH));
+//
+//                    modWaterShadeInt.rgb -= (waterAbsorbColor.rgb * vertexStepHeight);
+//                    modWaterShadeInt.rgb = max(waterMinColor.rgb, modWaterShadeInt.rgb);
+//                    modWaterShadeInt.rgb *= vec3(SMF_INTENSITY_MULT * waterLightInt);
+//
+//                    // make shadowed areas darker over deeper water
+//                    modWaterShadeInt.rgb *= (1.0 - waterShadeDecay * (1.0 - groundShadowCoeff));
+//
+//                    // if depth is greater than _SHALLOW_ depth, select waterShadeInt
+//                    // otherwise interpolate between groundShadeInt and waterShadeInt
+//                    // (both are already cosine-weighted)
+//                    modWaterShadeInt.rgb = mix(groundShadeInt.rgb, modWaterShadeInt.rgb, waterShadeAlpha);
+//                }
+//
+//                modWaterShadeInt = mix(rawWaterShadeInt, modWaterShadeInt, float(mapHeights.x <= 0.0));
+//                groundShadeInt = mix(groundShadeInt, modWaterShadeInt, float(vertexPos.y < 0.0));
+//#endif
+//
+                return groundShadeInt;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
-                fixed4 col = tex2D(_Map, i.chunkCoords);
-                col.rgb *= _GroundDiffuseColor;
-
+                fixed4 detailColor;
 
                 float3 normal;
                 normal.xz = tex2D(_Normal, i.normalCoords).rg;
                 normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
+
+                float2 splatDetailStrength = float2(0.0, 0.0);
+
+                float4 splatDetailNormal = GetSplatDetailTextureNormal(i.worldPos, i.normalCoords, splatDetailStrength);
+
+                detailColor = splatDetailStrength.y;
 
                 float3 tTangent = normalize(cross(normal, float3(1.0, 0.0, 0.0)));
                 float3 sTangent = cross(normal, tTangent);
                 float3x3 stnMatrix = float3x3(sTangent, tTangent, normal);
                 stnMatrix = transpose(stnMatrix);
 
-                float4 splatDistr = tex2D(_SplatDetailNormal1, i.normalCoords);
-
-                float2 splatDetailStrength = float2(0.0, 0.0);
-                splatDetailStrength.x = min(1.0, dot(splatDistr, 1.0));
-
-                float4 splatDetailNormal;
-                splatDetailNormal = ((tex2D(_SplatDetailNormal1,  i.normalCoords*50) * 2.0 - 1.0) * splatDistr.r);
-                splatDetailNormal += ((tex2D(_SplatDetailNormal2, i.normalCoords*50) * 2.0 - 1.0) * splatDistr.g);
-                splatDetailNormal += ((tex2D(_SplatDetailNormal3, i.normalCoords*50) * 2.0 - 1.0) * splatDistr.b);
-                splatDetailNormal += ((tex2D(_SplatDetailNormal4, i.normalCoords*50) * 2.0 - 1.0) * splatDistr.a);
-
-                // note: y=0.01 (pointing up) in case all splat-cofacs are zero
-                splatDetailNormal.y = max(splatDetailNormal.y, 0.01);
-
-                //splatDetailStrength.y = clamp(splatDetailNormal.a, -1.0, 1.0);
-
                 normal = normalize(lerp(normal, normalize(mul(stnMatrix, splatDetailNormal.xyz)), splatDetailStrength.x));
 
-                float d = dot(_WorldSpaceLightPos0, normal);
-                d = saturate(d);
+                fixed4 diffuseColor = tex2D(_Map, i.diffCoords);
 
-                float atten = LIGHT_ATTENUATION(i);
+                float cosAngleDiffuse = saturate(dot(_WorldSpaceLightPos0, normal));
+                float shadowCoeff = LIGHT_ATTENUATION(i);
+                float4 shadeInt = GetShadeInt(cosAngleDiffuse, shadowCoeff, diffuseColor.a);
 
-                float3 light = unity_AmbientGround.rgb + atten * d * _LightColor0.rgb;
+                float4 fragColor;
+                fragColor.rgb = (diffuseColor.rgb + detailColor.rgb) * shadeInt.rgb;
+                fragColor.a = shadeInt.a;
 
-                col.rgb *= light;
+                //float3 light = unity_AmbientGround.rgb + atten * d * _LightColor0.rgb;
 
-                UNITY_APPLY_FOG(i.fogCoord, col);
-                return col;
+                //col.rgb += GetDetailTextureColor(i.worldPos);
+                //col.rgb *= light;
+                //return tex2D(_SplatDistr, i.normalCoords) * _SplatMults;
+
+                UNITY_APPLY_FOG(i.fogCoord, fragColor);
+                return fragColor;
             }
 
             ENDCG

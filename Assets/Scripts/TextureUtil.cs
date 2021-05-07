@@ -3,7 +3,7 @@ using System.IO;
 
 public static class TextureUtil
 {
-    public static Texture2D LoadSupportedTexture(byte[] bytes, bool alpha)
+    public static Texture2D LoadSupportedTexture(byte[] bytes)
     {
         Texture2D tex = new Texture2D(2, 2);// alpha ? TextureFormat.DXT5: TextureFormat.DXT1, true);
         if (!tex.LoadImage(bytes))
@@ -55,13 +55,13 @@ public static class TextureUtil
     private const int FOURCC_DXT3 = 0x33545844;
     private const int FOURCC_DXT5 = 0x35545844;
 
-    public static Texture2D LoadDDSTexture(byte[] bytes, bool alpha, string name)
+    public static Texture2D LoadDDSTexture(byte[] bytes, string name)
     {
         using (BinaryReader r = new BinaryReader(new MemoryStream(bytes)))
         {
             string code = r.ReadASCIIString(4);
 
-            if(code != "DDS ")
+            if (code != "DDS ")
                 throw new System.Exception("Not a DDS file");
 
             var header = r.ReadStruct<DDSHeader>();
@@ -70,7 +70,7 @@ public static class TextureUtil
                 throw new System.Exception("Invalid DDS DXTn texture. header.dwSize != 124");
 
             byte[] dxtBytes = r.ReadBytes((int)(r.BaseStream.Length - r.BaseStream.Position));
-            
+
             TextureFormat format = TextureFormat.DXT1;
 
             switch (header.ddspf.dwFourCC)
@@ -99,7 +99,7 @@ public static class TextureUtil
         }
     }
 
-    public static Texture2D LoadTGATexture(byte[] bytes, bool usealpha)
+    public static Texture2D LoadTGATexture(byte[] bytes)
     {
         using (BinaryReader r = new BinaryReader(new MemoryStream(bytes)))
         {
@@ -150,5 +150,14 @@ public static class TextureUtil
             tex.Apply();
             return tex;
         }
+    }
+
+    public static Texture2D LoadBMPTexture(byte[] bytes)
+    {
+        var bmpLoader = new B83.Image.BMP.BMPLoader();
+
+        var bmpImg = bmpLoader.LoadBMP(bytes);
+
+        return bmpImg.ToTexture2D();
     }
 }

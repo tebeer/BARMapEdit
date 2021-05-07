@@ -36,12 +36,15 @@ public class MapData
 
 public struct MapTextures
 {
+    public Texture2D detailTex;
     public Texture2D detailNormalTex;
     public Texture2D splatDistrTex;
     public Texture2D splatDetailNormalTex1;
     public Texture2D splatDetailNormalTex2;
     public Texture2D splatDetailNormalTex3;
     public Texture2D splatDetailNormalTex4;
+    public Vector4 scales;
+    public Vector4 mults;
 }
 
 public static class SD7Unity
@@ -117,12 +120,17 @@ public static class SD7Unity
 
             var resources = mapData.mapInfoTable.Get("resources").Table;
 
-            textures.detailNormalTex = LoadTexture(sd7File, resources.Get("detailnormaltex").String, false);
-            textures.splatDistrTex = LoadTexture(sd7File, resources.Get("splatdistrtex").String, true);
-            textures.splatDetailNormalTex1 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex1").String, false);
-            textures.splatDetailNormalTex2 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex2").String, false);
-            textures.splatDetailNormalTex3 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex3").String, false);
-            textures.splatDetailNormalTex4 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex4").String, false);
+            textures.detailTex = LoadTexture(sd7File, resources.Get("detailtex").String);
+            textures.detailNormalTex = LoadTexture(sd7File, resources.Get("detailnormaltex").String);
+            textures.splatDistrTex = LoadTexture(sd7File, resources.Get("splatdistrtex").String);
+            textures.splatDetailNormalTex1 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex1").String);
+            textures.splatDetailNormalTex2 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex2").String);
+            textures.splatDetailNormalTex3 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex3").String);
+            textures.splatDetailNormalTex4 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex4").String);
+
+            var splats = mapData.mapInfoTable.Get("splats").Table;
+            textures.scales = splats.GetVector4("texscales");
+            textures.mults = splats.GetVector4("texmults");
         }
 
         foreach (var kv in mapData.mapInfoTable.Keys)
@@ -152,6 +160,11 @@ public static class SD7Unity
         return table.Get(name).Table.ToVector3();
     }
 
+    private static Vector4 GetVector4(this Table table, string name)
+    {
+        return table.Get(name).Table.ToVector4();
+    }
+
     private static Color GetColor(this Table table, string name)
     {
         return table.Get(name).Table.ToColor();
@@ -161,6 +174,12 @@ public static class SD7Unity
     {
         var values = table.ToFloatArray();
         return new Vector3(values[0], values[1], values[2]);
+    }
+
+    private static Vector4 ToVector4(this Table table)
+    {
+        var values = table.ToFloatArray();
+        return new Vector4(values[0], values[1], values[2], values[3]);
     }
 
     private static Color ToColor(this Table table)
@@ -199,7 +218,7 @@ public static class SD7Unity
         return go;
     }
 
-    private static Texture2D LoadTexture(ArchiveFile sd7File, string name, bool alpha)
+    private static Texture2D LoadTexture(ArchiveFile sd7File, string name)
     {
         var entry = sd7File.GetEntry("maps/" + name);
 
@@ -216,11 +235,13 @@ public static class SD7Unity
 
         var ext = Path.GetExtension(name).ToLower();
         if (ext == ".dds")
-            tex = TextureUtil.LoadDDSTexture(bytes, alpha, name);
+            tex = TextureUtil.LoadDDSTexture(bytes, name);
         else if (ext == ".tga")
-            tex = TextureUtil.LoadTGATexture(bytes, alpha);
+            tex = TextureUtil.LoadTGATexture(bytes);
+        else if (ext == ".bmp")
+            tex = TextureUtil.LoadBMPTexture(bytes);
         else
-            tex = TextureUtil.LoadSupportedTexture(bytes, alpha);
+            tex = TextureUtil.LoadSupportedTexture(bytes);
 
         tex.name = name;
         return tex;
