@@ -38,6 +38,7 @@ public struct MapTextures
 {
     public Texture2D detailTex;
     public Texture2D detailNormalTex;
+    public Texture2D specularTex;
     public Texture2D splatDistrTex;
     public Texture2D splatDetailNormalTex1;
     public Texture2D splatDetailNormalTex2;
@@ -122,6 +123,7 @@ public static class SD7Unity
 
             textures.detailTex = LoadTexture(sd7File, resources.Get("detailtex").String);
             textures.detailNormalTex = LoadTexture(sd7File, resources.Get("detailnormaltex").String);
+            textures.specularTex = LoadTexture(sd7File, resources.Get("speculartex").String);
             textures.splatDistrTex = LoadTexture(sd7File, resources.Get("splatdistrtex").String);
             textures.splatDetailNormalTex1 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex1").String);
             textures.splatDetailNormalTex2 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex2").String);

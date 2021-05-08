@@ -1072,7 +1072,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 10000
-  field of view: 60
+  field of view: 45
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -1962,6 +1962,26 @@ PrefabInstance:
       propertyPath: cameraControls
       value: 
       objectReference: {fileID: 963194229}
+    - target: {fileID: 8652324112399248701, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8652324112399248701, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8652324112399248701, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
+      propertyPath: m_SizeDelta.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8652324112399248701, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8652324112399248701, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8826630114153374251, guid: a534a95f0600ce74e85e5c30052e38a5, type: 3}
       propertyPath: m_AnchorMax.y
       value: 0

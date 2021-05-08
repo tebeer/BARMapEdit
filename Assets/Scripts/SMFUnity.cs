@@ -195,6 +195,7 @@ public static unsafe class SMFUnity
         material.SetFloat("_ChunksY", (float)data.resY / TexChunkSize);
         material.SetTexture("_Detail", textures.detailTex);
         material.SetTexture("_Normal", textures.detailNormalTex);
+        material.SetTexture("_Specular", textures.specularTex);
         material.SetTexture("_SplatDistr", textures.splatDistrTex);
         material.SetTexture("_SplatDetailNormal1", textures.splatDetailNormalTex1);
         material.SetTexture("_SplatDetailNormal2", textures.splatDetailNormalTex2);

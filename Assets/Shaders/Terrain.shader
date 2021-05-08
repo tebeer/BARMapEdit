@@ -7,6 +7,7 @@ Shader "Custom/Terrain"
         _Map("Map", 2D) = "white" {}
         _Detail("Detail", 2D) = "white" {}
         _Normal("Normal", 2D) = "bump" {}
+        _Specular("Specular", 2D) = "black" {}
         _SplatDistr("SplatDistr", 2D) = "white" {}
         _SplatDetailNormal1("SplatDetailNormal1", 2D) = "bump" {}
         _SplatDetailNormal2("SplatDetailNormal2", 2D) = "bump" {}
@@ -57,6 +58,7 @@ Shader "Custom/Terrain"
             sampler2D _Map;
             sampler2D _Detail;
             sampler2D _Normal;
+            sampler2D _Specular;
             sampler2D _SplatDistr;
             sampler2D _SplatDetailNormal1;
             sampler2D _SplatDetailNormal2;
@@ -112,6 +114,8 @@ Shader "Custom/Terrain"
                 splatDetailNormal.y = max(splatDetailNormal.y, 0.01);
 
                 splatDetailStrength.y = clamp(splatDetailNormal.a, -1.0, 1.0);
+
+                //splatDetailNormal.x = -splatDetailNormal.x;
 
                 return splatDetailNormal;
             }
@@ -179,12 +183,18 @@ Shader "Custom/Terrain"
                 fixed4 detailColor;
 
                 float3 normal;
-                normal.xz = tex2D(_Normal, i.normalCoords).rg;
-                normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
+                normal = normalize(tex2D(_Normal, i.normalCoords).rbg * 2 - 1);
+                //normal = tex2D(_Normal, i.normalCoords).rbg * 2 - 1;
+                //normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
+                //normal.xz = 2 * (tex2D(_Normal, i.normalCoords).rg - .5);
+                //normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
+                //normal.xyz = tex2D(_Normal, i.normalCoords).rbg;
+                //normal = normalize(normal);
 
                 float2 splatDetailStrength = float2(0.0, 0.0);
 
                 float4 splatDetailNormal = GetSplatDetailTextureNormal(i.worldPos, i.normalCoords, splatDetailStrength);
+                splatDetailNormal.x = -splatDetailNormal.x;
 
                 detailColor = splatDetailStrength.y;
 
@@ -198,6 +208,11 @@ Shader "Custom/Terrain"
                 fixed4 diffuseColor = tex2D(_Map, i.diffCoords);
 
                 float cosAngleDiffuse = saturate(dot(_WorldSpaceLightPos0, normal));
+
+                float3 viewDir = normalize(i.worldPos - _WorldSpaceCameraPos.xyz);
+                float3 halfDir = normalize(_WorldSpaceLightPos0.xyz - viewDir);
+                float cosAngleSpecular = clamp(dot(halfDir, normal), 0.001, 1.0);
+
                 float shadowCoeff = LIGHT_ATTENUATION(i);
                 float4 shadeInt = GetShadeInt(cosAngleDiffuse, shadowCoeff, diffuseColor.a);
 
@@ -205,13 +220,13 @@ Shader "Custom/Terrain"
                 fragColor.rgb = (diffuseColor.rgb + detailColor.rgb) * shadeInt.rgb;
                 fragColor.a = shadeInt.a;
 
-                //float3 light = unity_AmbientGround.rgb + atten * d * _LightColor0.rgb;
+                fixed4 specularColor = tex2D(_Specular, i.normalCoords);
+                float specularExp = specularColor.a * 16.0;
+                float specularPow = max(0.0, pow(cosAngleSpecular, specularExp));
+                fragColor.rgb += (specularColor.rgb * specularPow * shadowCoeff);
+                //return specularPow;
 
-                //col.rgb += GetDetailTextureColor(i.worldPos);
-                //col.rgb *= light;
-                //return tex2D(_SplatDistr, i.normalCoords) * _SplatMults;
-
-                UNITY_APPLY_FOG(i.fogCoord, fragColor);
+                //UNITY_APPLY_FOG(i.fogCoord, fragColor);
                 return fragColor;
             }
 
