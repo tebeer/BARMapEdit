@@ -55,5 +55,15 @@ public class MapEditorGUI : MonoBehaviour
         });
     }
 
+    private void Update()
+    {
+        if (m_mapData != null)
+        {
+            var pivot = cameraControls.pivot.transform.position;
+            pivot.y = SMFUnity.GetHeight(m_mapData.smfData, pivot.x, -pivot.z);
+            cameraControls.pivot.transform.position = pivot;
+        }
+    }
+
     private MapData m_mapData;
 }

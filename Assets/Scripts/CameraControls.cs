@@ -12,7 +12,6 @@ public class CameraControls : MonoBehaviour
     void Start()
     {
         Application.targetFrameRate = 60;
-
     }
 
     // Update is called once per frame
@@ -47,6 +46,7 @@ public class CameraControls : MonoBehaviour
 
         transform.localPosition = localPos;
 
+        euler.x = Mathf.Clamp(euler.x, -89, 89);
         pivot.rotation = Quaternion.Euler(euler);
         pivot.position = position;
     }

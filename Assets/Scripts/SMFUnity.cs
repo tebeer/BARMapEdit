@@ -214,6 +214,7 @@ public static unsafe class SMFUnity
     public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, MapTextures textures)
 	{
         GameObject rootGO = new GameObject("Map");
+        rootGO.isStatic = true;
 
         int TexDivisionsX = data.resX / TexChunkSize;
         int TexDivisionsY = data.resY / TexChunkSize;
@@ -414,7 +415,7 @@ public static unsafe class SMFUnity
         return go;
     }
 
-    private static float GetHeight(SMFData data, int x, int y)
+    public static float GetHeight(SMFData data, int x, int y)
     {
         if (x < 0)
             x = 0;
@@ -427,6 +428,21 @@ public static unsafe class SMFUnity
         return data.heightMap[x + y * data.resX];
     }
 
+    public static float GetHeight(SMFData data, float fx, float fy)
+    {
+        int x = (int)(fx / data.scale);
+        int y = (int)(fy / data.scale);
+
+        if (x < 0)
+            x = 0;
+        if (x >= data.resX)
+            x = data.resX - 1;
+        if (y < 0)
+            y = 0;
+        if (y >= data.resY)
+            y = data.resY - 1;
+        return data.heightMap[x + y * data.resX];
+    }
     private static List<Vector3> m_tempVerts;
     private static List<Vector2> m_tempUV;
     private static List<Vector3> m_tempNormals;

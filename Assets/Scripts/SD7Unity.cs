@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEditor.AssetImporters;
 using SevenZipExtractor;
 using System.IO;
 using System.Text;
@@ -135,8 +134,8 @@ public static class SD7Unity
             textures.mults = splats.GetVector4("texmults");
         }
 
-        foreach (var kv in mapData.mapInfoTable.Keys)
-            Debug.Log(kv.Type + " " + kv.String);
+        //foreach (var kv in mapData.mapInfoTable.Keys)
+        //    Debug.Log(kv.Type + " " + kv.String);
 
         mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, tiles, textures);
 
@@ -153,6 +152,23 @@ public static class SD7Unity
         Shader.SetGlobalColor("_GroundDiffuseColor", groundDiffuseColor);
 
         CreateSun(mapData, sunColor, sunDir);
+
+        var teamsTable = mapData.mapInfoTable.Get("teams").Table;
+        foreach (var i in teamsTable.Pairs)
+        {
+            var sp = i.Value.Table.Get("startpos");
+            var x = sp.Table.Get("x").Number;
+            var z = sp.Table.Get("z").Number;
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.transform.parent = mapData.mapGameObject.transform;
+
+            var pos = new Vector3((float)x, 0, (float)z);
+            pos.y = SMFUnity.GetHeight(mapData.smfData, pos.x, pos.z);
+            pos.z = -pos.z;
+            go.transform.position = pos;
+            go.transform.localScale = new Vector3(50, 50, 50);
+        }
 
         return mapData;
     }

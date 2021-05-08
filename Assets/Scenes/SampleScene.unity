@@ -1070,8 +1070,8 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
-  far clip plane: 10000
+  near clip plane: 1
+  far clip plane: 15000
   field of view: 45
   orthographic: 0
   orthographic size: 5
