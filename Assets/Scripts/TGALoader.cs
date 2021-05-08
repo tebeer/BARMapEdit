@@ -49,7 +49,6 @@ namespace TGA
             Array.Copy(image, TGAHeader.TgaHeaderSize, colorData, 0, colorData.Length);
 
             // Index color RLE or Full color RLE or Gray RLE
-            Debug.Log(header.imageType);
             if (header.imageType == 9 || header.imageType == 10 || header.imageType == 11)
                 colorData = DecodeRLE(header, colorData);
 

@@ -222,7 +222,13 @@ public static class SD7Unity
 
     private static Texture2D LoadTexture(ArchiveFile sd7File, string name)
     {
+        if (string.IsNullOrEmpty(name))
+            return null;
+
         var entry = sd7File.GetEntry("maps/" + name);
+
+        if (entry == null)
+            throw new System.Exception("Texture not found: " + name);
 
         Texture2D tex;
         byte[] bytes;
@@ -246,6 +252,7 @@ public static class SD7Unity
             tex = TextureUtil.LoadSupportedTexture(bytes);
 
         tex.name = name;
+        tex.mipMapBias = -1.0f;
         return tex;
     }
 

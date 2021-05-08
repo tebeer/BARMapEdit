@@ -34,6 +34,7 @@ Shader "Custom/Terrain"
             // make fog work
             #pragma multi_compile_fog
             #pragma multi_compile_fwdbase
+            #pragma shader_feature NORMAL_TEXTURE
 
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
@@ -43,6 +44,7 @@ Shader "Custom/Terrain"
             {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
+                float3 normal : NORMAL;
             };
 
             struct v2f
@@ -53,6 +55,9 @@ Shader "Custom/Terrain"
                 float3 worldPos : TEXCOORD2;
                 UNITY_FOG_COORDS(3)
                 LIGHTING_COORDS(4, 5)
+#if !NORMAL_TEXTURE
+                    float3 normal : TEXCOORD6;
+#endif
             };
 
             sampler2D _Map;
@@ -82,9 +87,12 @@ Shader "Custom/Terrain"
                 o.diffCoords.y = (_ChunksY * v.uv.y);
                 o.normalCoords = v.uv;
                 o.normalCoords.y = 1 - v.uv.y;
+#if !NORMAL_TEXTURE
+                o.normal = UnityObjectToWorldNormal(v.normal);
+#endif
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex);
 
-                UNITY_TRANSFER_FOG(o,o.vertex);
+                UNITY_TRANSFER_FOG(o,o.pos);
                 TRANSFER_VERTEX_TO_FRAGMENT(o);
                 return o;
             }
@@ -183,6 +191,7 @@ Shader "Custom/Terrain"
                 fixed4 detailColor;
 
                 float3 normal;
+#if NORMAL_TEXTURE
                 normal = normalize(tex2D(_Normal, i.normalCoords).rbg * 2 - 1);
                 //normal = tex2D(_Normal, i.normalCoords).rbg * 2 - 1;
                 //normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
@@ -190,6 +199,9 @@ Shader "Custom/Terrain"
                 //normal.y = sqrt(1.0 - dot(normal.xz, normal.xz));
                 //normal.xyz = tex2D(_Normal, i.normalCoords).rbg;
                 //normal = normalize(normal);
+#else
+                normal = i.normal;
+#endif
 
                 float2 splatDetailStrength = float2(0.0, 0.0);
 
@@ -226,7 +238,7 @@ Shader "Custom/Terrain"
                 fragColor.rgb += (specularColor.rgb * specularPow * shadowCoeff);
                 //return specularPow;
 
-                //UNITY_APPLY_FOG(i.fogCoord, fragColor);
+                UNITY_APPLY_FOG(i.fogCoord, fragColor);
                 return fragColor;
             }
 

@@ -194,7 +194,11 @@ public static unsafe class SMFUnity
         material.SetFloat("_ChunksX", (float)data.resX / TexChunkSize);
         material.SetFloat("_ChunksY", (float)data.resY / TexChunkSize);
         material.SetTexture("_Detail", textures.detailTex);
-        material.SetTexture("_Normal", textures.detailNormalTex);
+        if (textures.detailNormalTex != null)
+        {
+            material.SetTexture("_Normal", textures.detailNormalTex);
+            material.EnableKeyword("NORMAL_TEXTURE");
+        }
         material.SetTexture("_Specular", textures.specularTex);
         material.SetTexture("_SplatDistr", textures.splatDistrTex);
         material.SetTexture("_SplatDetailNormal1", textures.splatDetailNormalTex1);

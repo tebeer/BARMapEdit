@@ -106,7 +106,7 @@ public static class TextureUtil
         Texture2D tex;
         if (tga.header.bitPerPixel / 8 == 4)
             tex = new Texture2D(tga.header.imageWidth, tga.header.imageHeight, TextureFormat.RGBA32, true);
-        else if (tga.header.bitPerPixel / 8 == 4)
+        else if (tga.header.bitPerPixel / 8 == 3)
             tex = new Texture2D(tga.header.imageWidth, tga.header.imageHeight, TextureFormat.RGB24, true);
         else
             throw new System.Exception("Unknown format " + tga.header.bitPerPixel);
