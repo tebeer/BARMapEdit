@@ -46,7 +46,12 @@ public class CameraControls : MonoBehaviour
 
         transform.localPosition = localPos;
 
-        euler.x = Mathf.Clamp(euler.x, -89, 89);
+        if (euler.x > 180)
+            euler.x -= 360;
+        if (euler.x < -180)
+            euler.x += 360;
+        euler.x = Mathf.Clamp(euler.x, 0, 89);
+
         pivot.rotation = Quaternion.Euler(euler);
         pivot.position = position;
     }
