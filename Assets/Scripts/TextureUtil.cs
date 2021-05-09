@@ -125,4 +125,26 @@ public static class TextureUtil
 
         return bmpImg.ToTexture2D();
     }
+
+    public static Texture2D LoadTIFTexture(byte[] bytes)
+    {
+        Texture2D tex = null;
+
+        using (var img = new ImageMagick.MagickImage(bytes))
+        {
+            var pixels = img.GetPixels();
+            tex = new Texture2D(img.Width, img.Height);
+            for (int y = 0; y < img.Height; ++y)
+            {
+                for (int x = 0; x < img.Width; ++x)
+                {
+                    var p = pixels.GetPixel(x, img.Height-y-1).ToColor();
+                    tex.SetPixel(x, y, new Color32(p.R, p.G, p.B, p.A));
+                }
+            }
+        }
+
+        tex.Apply();
+        return tex;
+    }
 }

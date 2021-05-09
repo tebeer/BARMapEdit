@@ -5,10 +5,11 @@ Shader "Custom/Terrain"
     Properties
     {
         _Map("Map", 2D) = "white" {}
-        _Detail("Detail", 2D) = "white" {}
+        _Detail("Detail", 2D) = "gray" {}
         _Normal("Normal", 2D) = "bump" {}
         _Specular("Specular", 2D) = "black" {}
         _SplatDistr("SplatDistr", 2D) = "white" {}
+        _SplatDetailTex("SplatDetailTex", 2D) = "white" {}
         _SplatDetailNormal1("SplatDetailNormal1", 2D) = "bump" {}
         _SplatDetailNormal2("SplatDetailNormal2", 2D) = "bump" {}
         _SplatDetailNormal3("SplatDetailNormal3", 2D) = "bump" {}
@@ -35,6 +36,7 @@ Shader "Custom/Terrain"
             #pragma multi_compile_fog
             #pragma multi_compile_fwdbase
             #pragma shader_feature NORMAL_TEXTURE
+            #pragma shader_feature SPLAT_NORMAL
 
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
@@ -65,6 +67,7 @@ Shader "Custom/Terrain"
             sampler2D _Normal;
             sampler2D _Specular;
             sampler2D _SplatDistr;
+            sampler2D _SplatDetailTex;
             sampler2D _SplatDetailNormal1;
             sampler2D _SplatDetailNormal2;
             sampler2D _SplatDetailNormal3;
@@ -97,13 +100,27 @@ Shader "Custom/Terrain"
                 return o;
             }
 
-            fixed4 GetDetailTextureColor(float3 vertexPos)
+            fixed4 GetDetailTextureColor(float3 vertexPos, float2 uv)
             {
-                float2 detailTexCoord = vertexPos.xz * _Detail_TexelSize.xy;
-                fixed4 detailCol = (tex2D(_Detail, detailTexCoord) * 2.0) - 1.0;
+//#ifndef SMF_DETAIL_TEXTURE_SPLATTING
+//                float2 detailTexCoord = vertexPos.xz * _Detail_TexelSize.xy;
+//                fixed4 detailCol = (tex2D(_Detail, detailTexCoord) * 2.0) - 1.0;
+//#else
+                float4 splatTexCoord0 = vertexPos.xzxz * _SplatScales.rrgg;
+                float4 splatTexCoord1 = vertexPos.xzxz * _SplatScales.bbaa;
+                float4 splatDetails;
+                splatDetails.r = tex2D(_SplatDetailTex, splatTexCoord0.xy).r;
+                splatDetails.g = tex2D(_SplatDetailTex, splatTexCoord0.zw).g;
+                splatDetails.b = tex2D(_SplatDetailTex, splatTexCoord1.xy).b;
+                splatDetails.a = tex2D(_SplatDetailTex, splatTexCoord1.zw).a;
+                splatDetails = (splatDetails * 2.0) - 1.0;
+                float4 splatDist = tex2D(_SplatDistr, uv) * _SplatMults;
+                float4 detailCol = dot(splatDetails, splatDist);
+//#endif
                 return detailCol;
             }
 
+#if SPLAT_NORMAL
             float4 GetSplatDetailTextureNormal(float3 vertexPos, float2 uv, out float2 splatDetailStrength)
             {
                 float4 splatTexCoord0 = vertexPos.xzxz * _SplatScales.rrgg;
@@ -127,6 +144,7 @@ Shader "Custom/Terrain"
 
                 return splatDetailNormal;
             }
+#endif
 
 #define SMF_INTENSITY_MULT (210.0 / 256.0) + (1.0 / 256.0) - (1.0 / 2048.0) - (1.0 / 4096.0)
 
@@ -217,6 +235,9 @@ Shader "Custom/Terrain"
                 stnMatrix = transpose(stnMatrix);
 
                 normal = normalize(lerp(normal, normalize(mul(stnMatrix, splatDetailNormal.xyz)), splatDetailStrength.x));
+
+#else
+                detailColor = GetDetailTextureColor(i.worldPos, i.normalCoords);
 #endif
 
                 fixed4 diffuseColor = tex2D(_Map, i.diffCoords);
@@ -238,7 +259,6 @@ Shader "Custom/Terrain"
                 float specularExp = specularColor.a * 16.0;
                 float specularPow = max(0.0, pow(cosAngleSpecular, specularExp));
                 fragColor.rgb += (specularColor.rgb * specularPow * shadowCoeff);
-                //return specularPow;
 
                 UNITY_APPLY_FOG(i.fogCoord, fragColor);
                 return fragColor;

@@ -201,6 +201,7 @@ public static unsafe class SMFUnity
         }
         material.SetTexture("_Specular", textures.specularTex);
         material.SetTexture("_SplatDistr", textures.splatDistrTex);
+        material.SetTexture("_SplatDetailTex", textures.splatDetailTex);
         if (textures.splatDetailNormalTex1 != null)
         {
             material.EnableKeyword("SPLAT_NORMAL");

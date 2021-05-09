@@ -65,6 +65,7 @@ public struct MapTextures
     public Texture2D detailNormalTex;
     public Texture2D specularTex;
     public Texture2D splatDistrTex;
+    public Texture2D splatDetailTex;
     public Texture2D splatDetailNormalTex1;
     public Texture2D splatDetailNormalTex2;
     public Texture2D splatDetailNormalTex3;
@@ -204,13 +205,14 @@ public static class SD7Unity
 
             var resources = mapData.mapInfoTable.Get("resources").Table;
 
-            foreach (var p in resources.Pairs)
-                Debug.Log(p.Key.String + " " + p.Value.Type + " " + p.Value.String);
+            //foreach (var p in resources.Pairs)
+            //    Debug.Log(p.Key.String + " " + p.Value.Type + " " + p.Value.String);
 
             mapData.textures.detailTex = LoadTexture(vfs, resources.Get2("detailTex").String);
             mapData.textures.detailNormalTex = LoadTexture(vfs, resources.Get2("detailNormalTex").String);
             mapData.textures.specularTex = LoadTexture(vfs, resources.Get2("specularTex").String);
             mapData.textures.splatDistrTex = LoadTexture(vfs, resources.Get2("splatDistrTex").String);
+            mapData.textures.splatDetailTex = LoadTexture(vfs, resources.Get2("splatDetailTex").String);
             mapData.textures.splatDetailNormalTex1 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex1").String);
             mapData.textures.splatDetailNormalTex2 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex2").String);
             mapData.textures.splatDetailNormalTex3 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex3").String);
@@ -349,7 +351,10 @@ public static class SD7Unity
         var bytes = vfs.LoadBytes("maps/" + name);
 
         if (bytes == null)
-            throw new System.Exception("Texture not found: " + name);
+        {
+            Debug.LogError("Texture not found: " + name);
+            return null;
+        }
 
         Texture2D tex;
 
@@ -360,6 +365,8 @@ public static class SD7Unity
             tex = TextureUtil.LoadTGATexture(bytes);
         else if (ext == ".bmp")
             tex = TextureUtil.LoadBMPTexture(bytes);
+        else if (ext == ".tif")
+            tex = TextureUtil.LoadTIFTexture(bytes);
         else
             tex = TextureUtil.LoadSupportedTexture(bytes);
 
