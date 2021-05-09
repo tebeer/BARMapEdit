@@ -203,6 +203,7 @@ Shader "Custom/Terrain"
                 normal = i.normal;
 #endif
 
+#if SPLAT_NORMAL
                 float2 splatDetailStrength = float2(0.0, 0.0);
 
                 float4 splatDetailNormal = GetSplatDetailTextureNormal(i.worldPos, i.normalCoords, splatDetailStrength);
@@ -216,6 +217,7 @@ Shader "Custom/Terrain"
                 stnMatrix = transpose(stnMatrix);
 
                 normal = normalize(lerp(normal, normalize(mul(stnMatrix, splatDetailNormal.xyz)), splatDetailStrength.x));
+#endif
 
                 fixed4 diffuseColor = tex2D(_Map, i.diffCoords);
 

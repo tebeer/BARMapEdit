@@ -5,22 +5,47 @@ using System.Text;
 using MoonSharp.Interpreter;
 using System.Collections.Generic;
 
+public static class TableExtensions
+{
+    public static DynValue Get2(this Table table, string name)
+    {
+        var value = table.Get(name);
+        if (value != null && value.Type != DataType.Nil)
+            return value;
+        return table.Get(name.ToLower());
+    }
+}
+
 public static class SevenZipExtensions
 {
     public static Entry GetEntry(this ArchiveFile archiveFile, string name)
     {
+        name = name.ToLower().Replace('\\', '/');
         foreach (var entry in archiveFile.Entries)
-            if (entry.FileName.Replace('\\', '/') == name.Replace('\\', '/'))
+            if (entry.FileName.ToLower().Replace('\\', '/') == name)
                 return entry;
         return null;
     }
 
     public static string ExtractAsString(this Entry entry)
     {
+        if (entry == null)
+            throw new System.Exception("null reference");
         using (var memoryStream = new MemoryStream())
         {
             entry.Extract(memoryStream);
             return Encoding.UTF8.GetString(memoryStream.GetBuffer());
+        }
+    }
+
+    public static byte[] ExtractAsBytes(this Entry entry)
+    {
+        if (entry == null)
+            throw new System.Exception("null reference");
+        using (var memoryStream = new MemoryStream())
+        {
+            entry.Extract(memoryStream);
+            return memoryStream.ToArray();
         }
     }
 }
@@ -29,8 +54,9 @@ public class MapData
 {
     public GameObject mapGameObject;
     public SMFData smfData;
-    public Script mapInfoScript;
     public Table mapInfoTable;
+    public byte[][] tiles;
+    public MapTextures textures;
 }
 
 public struct MapTextures
@@ -47,99 +73,160 @@ public struct MapTextures
     public Vector4 mults;
 }
 
+public class VFS : System.IDisposable
+{
+    public Script Script { get { return m_script; } }
+
+    public VFS(ArchiveFile archive)
+    {
+        m_archive = archive;
+        m_script = new Script();
+
+        var vfsTable = new Table(m_script);
+        m_script.Globals["VFS"] = vfsTable;
+        vfsTable["DirList"] = (System.Func<string, string, List<string>>)DirList;
+        vfsTable["LoadFile"] = (System.Func<string, string>)LoadFile;
+        vfsTable["Include"] = (System.Func<string, DynValue>)Include;
+
+        var springTable = new Table(m_script);
+        m_script.Globals["Spring"] = springTable;
+        springTable["Echo"] = (System.Action<string>)Debug.Log;
+
+        System.Func<Table> getfenv = () => new Table(m_script);
+        m_script.Globals["getfenv"] = getfenv;
+
+    }
+
+    public string LoadFile(string fname)
+    {
+        var entry = m_archive.GetEntry(fname);
+        if (entry != null)
+            return entry.ExtractAsString();
+
+        fname = Path.Combine(Application.streamingAssetsPath, fname);
+        if (File.Exists(fname))
+            return File.ReadAllText(fname);
+
+        return null;
+    }
+
+    public DynValue Include(string fname)
+    {
+        var lua = LoadFile(fname);
+        if (lua == null)
+            return null;
+
+        try
+        {
+            return m_script.DoString(lua, null, fname);
+        }
+        catch (ScriptRuntimeException ex)
+        {
+            Debug.LogError("Lua error: " + ex.DecoratedMessage);
+            return null;
+        }
+    }
+
+    public byte[] LoadBytes(string fname)
+    {
+        var entry = m_archive.GetEntry(fname);
+        if (entry != null)
+            return entry.ExtractAsBytes();
+
+        fname = Path.Combine(Application.streamingAssetsPath, fname);
+        if (File.Exists(fname))
+            return File.ReadAllBytes(fname);
+
+        return null;
+    }
+
+    public List<string> DirList(string dir, string ext)
+    {
+        return new List<string>();
+    }
+
+    public void Dispose()
+    {
+        m_archive.Dispose();
+        m_archive = null;
+    }
+
+    private ArchiveFile m_archive;
+    private Script m_script;
+}
+
 public static class SD7Unity
 {
     public static MapData LoadSD7(string path)
     {
         var mapData = new MapData();
 
-        byte[][] tiles;
-        MapTextures textures;
-
-        using (var sd7File = new ArchiveFile(path))
+        using (var vfs = new VFS(new ArchiveFile(path)))
         {
-            var mapInfoEntry = sd7File.GetEntry(MapInfoLuaFileName);
+            var mapFilePath = Path.Combine("maps", Path.ChangeExtension(Path.GetFileName(path), "smf"));
+            var mapConfigPath = Path.ChangeExtension(mapFilePath, "smd");
 
-            var mapInfoLua = mapInfoEntry.ExtractAsString();
+            var mapTable = new Table(vfs.Script);
+            mapTable.Set("configFile", DynValue.NewString(mapConfigPath));
+            vfs.Script.Globals["Map"] = mapTable;
 
-            mapData.mapInfoScript = new Script();
-            DynValue root = null;
-
-            var VFS = new Table(mapData.mapInfoScript);
-            VFS["DirList"] = (System.Func<string, string, List<string>>)VFSDirList;
-
-            mapData.mapInfoScript.Globals["VFS"] = VFS;
-
-            m_dummy = new Table(mapData.mapInfoScript);
-            mapData.mapInfoScript.Globals["getfenv"] = (System.Func<Table>)getfenv;
-
-            try
-            {
-                root = mapData.mapInfoScript.DoString(mapInfoLua);
-            }
-            catch (ScriptRuntimeException ex)
-            {
-                Debug.LogError("Lua error: " + ex.DecoratedMessage);
-            }
+            DynValue root = vfs.Include(MapInfoLuaFileName);
+            if(root == null)
+                root = vfs.Include(Path.Combine("maphelper/", MapInfoLuaFileName));
+            if(root == null)
+                throw new System.Exception(MapInfoLuaFileName + " not found");
 
             mapData.mapInfoTable = root.Table;
 
-            var mapFileName = mapData.mapInfoTable.Get("mapfile").String;
+            var mapFilePathInMapInfo = mapData.mapInfoTable.Get2("mapfile").String;
+            if (mapFilePathInMapInfo != null)
+                mapFilePath = mapFilePathInMapInfo;
 
-            var mapFileEntry = sd7File.GetEntry(mapFileName);
-            using (var memoryStream = new MemoryStream())
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(vfs.LoadBytes(mapFilePath))))
             {
-                mapFileEntry.Extract(memoryStream);
-                memoryStream.Position = 0;
-                using (BinaryReader reader = new BinaryReader(memoryStream))
-                {
-                    mapData.smfData = SMFUnity.LoadSMF(reader);
+                mapData.smfData = SMFUnity.LoadSMF(reader);
 
-                    var smfTable = mapData.mapInfoTable.Get("smf").Table;
+                var smfTable = mapData.mapInfoTable.Get2("smf").Table;
 
-                    mapData.smfData.header.minHeight = (float)smfTable.Get("minheight").Number;
-                    mapData.smfData.header.maxHeight = (float)smfTable.Get("maxheight").Number;
+                mapData.smfData.header.minHeight = (float)smfTable.Get2("minheight").CastToNumber().Value;
+                mapData.smfData.header.maxHeight = (float)smfTable.Get2("maxheight").CastToNumber().Value;
 
-                    mapData.smfData.heightMap = SMFUnity.LoadHeightMap(reader, mapData.smfData.header);
-                }
+                mapData.smfData.heightMap = SMFUnity.LoadHeightMap(reader, mapData.smfData.header);
             }
 
-            var dir = Path.GetDirectoryName(mapFileName);
+            var dir = Path.GetDirectoryName(mapFilePath);
 
-            tiles = SMFUnity.LoadTileFiles(mapData.smfData, (name) =>
+            mapData.tiles = SMFUnity.LoadTileFiles(mapData.smfData, (name) =>
             {
                 var tileFilePath = Path.Combine(dir, name);
-                var tileFileEntry = sd7File.GetEntry(tileFilePath);
-
-                var memoryStream = new MemoryStream();
-                tileFileEntry.Extract(memoryStream);
-                memoryStream.Position = 0;
-
-                return new BinaryReader(memoryStream);
+                return new BinaryReader(new MemoryStream(vfs.LoadBytes(tileFilePath)));
             });
 
             var resources = mapData.mapInfoTable.Get("resources").Table;
 
-            textures.detailTex = LoadTexture(sd7File, resources.Get("detailtex").String);
-            textures.detailNormalTex = LoadTexture(sd7File, resources.Get("detailnormaltex").String);
-            textures.specularTex = LoadTexture(sd7File, resources.Get("speculartex").String);
-            textures.splatDistrTex = LoadTexture(sd7File, resources.Get("splatdistrtex").String);
-            textures.splatDetailNormalTex1 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex1").String);
-            textures.splatDetailNormalTex2 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex2").String);
-            textures.splatDetailNormalTex3 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex3").String);
-            textures.splatDetailNormalTex4 = LoadTexture(sd7File, resources.Get("splatdetailnormaltex4").String);
+            foreach (var p in resources.Pairs)
+                Debug.Log(p.Key.String + " " + p.Value.Type + " " + p.Value.String);
 
-            var splats = mapData.mapInfoTable.Get("splats").Table;
-            textures.scales = splats.GetVector4("texscales");
-            textures.mults = splats.GetVector4("texmults");
+            mapData.textures.detailTex = LoadTexture(vfs, resources.Get2("detailTex").String);
+            mapData.textures.detailNormalTex = LoadTexture(vfs, resources.Get2("detailNormalTex").String);
+            mapData.textures.specularTex = LoadTexture(vfs, resources.Get2("specularTex").String);
+            mapData.textures.splatDistrTex = LoadTexture(vfs, resources.Get2("splatDistrTex").String);
+            mapData.textures.splatDetailNormalTex1 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex1").String);
+            mapData.textures.splatDetailNormalTex2 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex2").String);
+            mapData.textures.splatDetailNormalTex3 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex3").String);
+            mapData.textures.splatDetailNormalTex4 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex4").String);
+
+            var splats = mapData.mapInfoTable.Get2("splats").Table;
+            mapData.textures.scales = splats.GetVector4("texScales");
+            mapData.textures.mults = splats.GetVector4("texMults");
         }
 
         //foreach (var kv in mapData.mapInfoTable.Keys)
         //    Debug.Log(kv.Type + " " + kv.String);
 
-        mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, tiles, textures);
+        mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, mapData.tiles, mapData.textures);
 
-        var atmosphereTable = mapData.mapInfoTable.Get("atmosphere").Table;
+        var atmosphereTable = mapData.mapInfoTable.Get2("atmosphere").Table;
         var sunColor = atmosphereTable.GetColor("suncolor");
 
         var lightingTable = mapData.mapInfoTable.Get("lighting").Table;
@@ -153,12 +240,12 @@ public static class SD7Unity
 
         CreateSun(mapData, sunColor, sunDir);
 
-        var teamsTable = mapData.mapInfoTable.Get("teams").Table;
+        var teamsTable = mapData.mapInfoTable.Get2("teams").Table;
         foreach (var i in teamsTable.Pairs)
         {
             var sp = i.Value.Table.Get("startpos");
-            var x = sp.Table.Get("x").Number;
-            var z = sp.Table.Get("z").Number;
+            var x = sp.Table.Get2("x").Number;
+            var z = sp.Table.Get2("z").Number;
 
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.transform.parent = mapData.mapGameObject.transform;
@@ -175,17 +262,35 @@ public static class SD7Unity
 
     private static Vector3 GetVector3(this Table table, string name)
     {
-        return table.Get(name).Table.ToVector3();
+        var value = table.Get2(name);
+        if (value.Type == DataType.String)
+        {
+            var split = value.String.Split(' ');
+            return new Vector3(float.Parse(split[0]), float.Parse(split[1]), float.Parse(split[2]));
+        }
+        return value.Table.ToVector3();
     }
 
     private static Vector4 GetVector4(this Table table, string name)
     {
-        return table.Get(name).Table.ToVector4();
+        var value = table.Get2(name);
+        if (value.Type == DataType.String)
+        {
+            var split = value.String.Split(' ');
+            return new Vector4(float.Parse(split[0]), float.Parse(split[1]), float.Parse(split[2]), float.Parse(split[3]));
+        }
+        return value.Table.ToVector4();
     }
 
     private static Color GetColor(this Table table, string name)
     {
-        return table.Get(name).Table.ToColor();
+        var value = table.Get2(name);
+        if (value.Type == DataType.String)
+        {
+            var split = value.String.Split(' ');
+            return new Color(float.Parse(split[0]), float.Parse(split[1]), float.Parse(split[2]), split.Length > 3 ? float.Parse(split[3]) : 1.0f);
+        }
+        return value.Table.ToColor();
     }
 
     private static Vector3 ToVector3(this Table table)
@@ -236,26 +341,17 @@ public static class SD7Unity
         return go;
     }
 
-    private static Texture2D LoadTexture(ArchiveFile sd7File, string name)
+    private static Texture2D LoadTexture(VFS vfs, string name)
     {
         if (string.IsNullOrEmpty(name))
             return null;
 
-        var entry = sd7File.GetEntry("maps/" + name);
+        var bytes = vfs.LoadBytes("maps/" + name);
 
-        if (entry == null)
+        if (bytes == null)
             throw new System.Exception("Texture not found: " + name);
 
         Texture2D tex;
-        byte[] bytes;
-
-        //Debug.Log("LoadTexture " + name);
-
-        using (var memoryStream = new MemoryStream())
-        {
-            entry.Extract(memoryStream);
-            bytes = memoryStream.ToArray();
-        }
 
         var ext = Path.GetExtension(name).ToLower();
         if (ext == ".dds")
@@ -272,19 +368,5 @@ public static class SD7Unity
         return tex;
     }
 
-
     const string MapInfoLuaFileName = "mapinfo.lua";
-
-    private static List<string> VFSDirList(string dir, string ext)
-    {
-        return new List<string>();
-    }
-
-    private static Table getfenv()
-    {
-        return m_dummy;
-    }
-
-    private static Table m_dummy;
-
 }
