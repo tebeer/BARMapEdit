@@ -22,46 +22,53 @@ Shader "Custom/Terrain"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque"  "LightMode" = "ForwardBase" }
-        LOD 100
-
-        Lighting On
+        Tags
+        {
+            "RenderPipeline" = "UniversalPipeline"
+            "RenderType" = "Opaque"
+            "Queue" = "Geometry"
+        }
 
         Pass
         {
-            CGPROGRAM
+            Name "ForwardLit"
+            Tags { "LightMode" = "UniversalForward" }
+
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            // make fog work
+
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _SHADOWS_SOFT
             #pragma multi_compile_fog
-            #pragma multi_compile_fwdbase
+
             #pragma shader_feature NORMAL_TEXTURE
             #pragma shader_feature SPLAT_NORMAL
 
-            #include "UnityCG.cginc"
-            #include "AutoLight.cginc"
-            #include "Lighting.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-            struct appdata
+            struct Attributes
             {
-                float4 vertex : POSITION;
+                float4 position : POSITION;
                 float2 uv : TEXCOORD0;
                 float3 normal : NORMAL;
             };
 
-            struct v2f
+            struct Varyings
             {
-                float4 pos : SV_POSITION;
+                float4 position                 : SV_POSITION;
                 float2 diffCoords : TEXCOORD0;
                 float2 normalCoords : TEXCOORD1;
                 float3 worldPos : TEXCOORD2;
-                UNITY_FOG_COORDS(3)
-                LIGHTING_COORDS(4, 5)
+                float fogCoord : TEXCOORD3;
 #if !NORMAL_TEXTURE
-                    float3 normal : TEXCOORD6;
+                float3 normal : TEXCOORD6;
 #endif
             };
-
+             
+            CBUFFER_START(UnityPerMaterial)
             sampler2D _Map;
             sampler2D _Detail;
             sampler2D _Normal;
@@ -75,32 +82,32 @@ Shader "Custom/Terrain"
 
             float _ChunksX;
             float _ChunksY;
-            fixed4 _GroundDiffuseColor;
+            half4 _GroundDiffuseColor;
 
             float4 _Detail_TexelSize;
 
             float4 _SplatScales;
             float4 _SplatMults;
+            CBUFFER_END
 
-            v2f vert(appdata v)
+            Varyings vert(Attributes v)
             {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
+                Varyings o;
+                o.position = TransformObjectToHClip(v.position.xyz);
+                o.worldPos = TransformObjectToWorld(v.position.xyz);
                 o.diffCoords.x = (_ChunksX * v.uv.x);
                 o.diffCoords.y = (_ChunksY * v.uv.y);
-                o.normalCoords = v.uv;
+                o.normalCoords.x = v.uv.x;
                 o.normalCoords.y = 1 - v.uv.y;
 #if !NORMAL_TEXTURE
-                o.normal = UnityObjectToWorldNormal(v.normal);
+                o.normal = TransformObjectToWorldNormal(v.normal);
 #endif
-                o.worldPos = mul(unity_ObjectToWorld, v.vertex);
+                o.fogCoord = ComputeFogFactor(o.position.z);
 
-                UNITY_TRANSFER_FOG(o,o.pos);
-                TRANSFER_VERTEX_TO_FRAGMENT(o);
                 return o;
             }
 
-            fixed4 GetDetailTextureColor(float3 vertexPos, float2 uv)
+            half4 GetDetailTextureColor(float3 vertexPos, float2 uv)
             {
 //#ifndef SMF_DETAIL_TEXTURE_SPLATTING
 //                float2 detailTexCoord = vertexPos.xz * _Detail_TexelSize.xy;
@@ -152,7 +159,7 @@ Shader "Custom/Terrain"
             {
                 float4 groundShadeInt = float4(0.0, 0.0, 0.0, 1.0);
 
-                groundShadeInt.rgb = unity_AmbientGround.rgb + _GroundDiffuseColor * (groundLightInt * groundShadowCoeff);
+                groundShadeInt.rgb = unity_AmbientGround.rgb + _GroundDiffuseColor.rgb * (groundLightInt * groundShadowCoeff);
                 groundShadeInt.rgb *= SMF_INTENSITY_MULT;
 //
 //#ifdef SMF_VOID_WATER
@@ -204,9 +211,9 @@ Shader "Custom/Terrain"
                 return groundShadeInt;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            half4 frag(Varyings i) : SV_Target
             {
-                fixed4 detailColor;
+                half4 detailColor;
 
                 float3 normal;
 #if NORMAL_TEXTURE
@@ -240,51 +247,72 @@ Shader "Custom/Terrain"
                 detailColor = GetDetailTextureColor(i.worldPos, i.normalCoords);
 #endif
 
-                fixed4 diffuseColor = tex2D(_Map, i.diffCoords);
+                half4 diffuseColor = tex2D(_Map, i.diffCoords);
 
-                float cosAngleDiffuse = saturate(dot(_WorldSpaceLightPos0, normal));
+                Light mainLight = GetMainLight();
+
+                float cosAngleDiffuse = saturate(dot(mainLight.direction, normal));
 
                 float3 viewDir = normalize(i.worldPos - _WorldSpaceCameraPos.xyz);
-                float3 halfDir = normalize(_WorldSpaceLightPos0.xyz - viewDir);
+                float3 halfDir = normalize(mainLight.direction - viewDir);
                 float cosAngleSpecular = clamp(dot(halfDir, normal), 0.001, 1.0);
 
-                float shadowCoeff = LIGHT_ATTENUATION(i);
+                float shadowCoeff = 1;
+#ifdef _MAIN_LIGHT_SHADOWS
+                shadowCoeff = MainLightRealtimeShadow(TransformWorldToShadowCoord(i.worldPos));
+#endif
+
                 float4 shadeInt = GetShadeInt(cosAngleDiffuse, shadowCoeff, diffuseColor.a);
 
                 float4 fragColor;
                 fragColor.rgb = (diffuseColor.rgb + detailColor.rgb) * shadeInt.rgb;
                 fragColor.a = shadeInt.a;
 
-                fixed4 specularColor = tex2D(_Specular, i.normalCoords);
+                half4 specularColor = tex2D(_Specular, i.normalCoords);
                 float specularExp = specularColor.a * 16.0;
                 float specularPow = max(0.0, pow(cosAngleSpecular, specularExp));
                 fragColor.rgb += (specularColor.rgb * specularPow * shadowCoeff);
 
-                UNITY_APPLY_FOG(i.fogCoord, fragColor);
+                //UNITY_APPLY_FOG(i.fogCoord, fragColor);
                 return fragColor;
             }
 
-            ENDCG
+            ENDHLSL
         }
 
         Pass
         {
             Tags{ "LightMode" = "ShadowCaster" }
-            CGPROGRAM
-            #pragma vertex VSMain
-            #pragma fragment PSMain
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            float4 VSMain(float4 vertex:POSITION) : SV_POSITION
+            struct appdata
             {
-                return UnityObjectToClipPos(vertex);
-            }
+                float4 vertex : POSITION;
+            };
 
-            float4 PSMain(float4 vertex:SV_POSITION) : SV_TARGET
+            struct v2f
             {
-                return 0;
-            }
+                float4 pos : SV_POSITION;
+            };
 
-            ENDCG
+            sampler2D _MainTex;
+            float4 _MainTex_ST;
+
+            v2f vert(appdata v)
+            {
+                v2f o;
+                o.pos = TransformWorldToHClip(v.vertex.xyz);
+                return o;
+            }
+            float4 frag(v2f i) : SV_Target
+            {
+                return float4(0.0, 0.0, 0.0, 1);
+            }
+            ENDHLSL
+
         }
     }
 }
