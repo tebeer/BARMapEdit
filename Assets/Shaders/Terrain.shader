@@ -258,9 +258,10 @@ Shader "Custom/Terrain"
                 float cosAngleSpecular = clamp(dot(halfDir, normal), 0.001, 1.0);
 
                 float shadowCoeff = 1;
-#ifdef _MAIN_LIGHT_SHADOWS
-                shadowCoeff = MainLightRealtimeShadow(TransformWorldToShadowCoord(i.worldPos));
-#endif
+//#ifdef _MAIN_LIGHT_SHADOWS
+                float4 shadowCoord = TransformWorldToShadowCoord(i.worldPos);
+                shadowCoeff = MainLightRealtimeShadow(shadowCoord);
+//#endif
 
                 float4 shadeInt = GetShadeInt(cosAngleDiffuse, shadowCoeff, diffuseColor.a);
 
@@ -282,37 +283,39 @@ Shader "Custom/Terrain"
 
         Pass
         {
-            Tags{ "LightMode" = "ShadowCaster" }
+            Name "ShadowCaster"
+            Tags{"LightMode" = "ShadowCaster"}
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
+            Cull[_Cull]
+
             HLSLPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #pragma only_renderers gles gles3 glcore d3d11
+            #pragma target 2.0
 
-            struct appdata
-            {
-                float4 vertex : POSITION;
-            };
+            //--------------------------------------
+            // GPU Instancing
+            #pragma multi_compile_instancing
 
-            struct v2f
-            {
-                float4 pos : SV_POSITION;
-            };
+            // -------------------------------------
+            // Material Keywords
+            #pragma shader_feature_local_fragment _ALPHATEST_ON
+            #pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
 
-            sampler2D _MainTex;
-            float4 _MainTex_ST;
+            // -------------------------------------
+            // Universal Pipeline keywords
 
-            v2f vert(appdata v)
-            {
-                v2f o;
-                o.pos = TransformWorldToHClip(v.vertex.xyz);
-                return o;
-            }
-            float4 frag(v2f i) : SV_Target
-            {
-                return float4(0.0, 0.0, 0.0, 1);
-            }
+            // This is used during shadow map generation to differentiate between directional and punctual light shadows, as they use different formulas to apply Normal Bias
+            #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+
+            #pragma vertex ShadowPassVertex
+            #pragma fragment ShadowPassFragment
+
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/ShadowCasterPass.hlsl"
             ENDHLSL
-
         }
     }
 }
