@@ -50,6 +50,18 @@ public static class SevenZipExtensions
     }
 }
 
+public struct AtmosphereData
+{
+    public Color sunColor;
+}
+
+public struct LightingData
+{
+    public Vector3 sunDir;
+    public Color groundAmbientColor;
+    public Color groundDiffuseColor;
+    }
+
 public class MapData
 {
     public GameObject mapGameObject;
@@ -57,6 +69,12 @@ public class MapData
     public Table mapInfoTable;
     public byte[][] tiles;
     public MapTextures textures;
+    public Script mapInfoScript;
+
+    public AtmosphereData atmosphere;
+    public LightingData lighting;
+
+    public GameObject sunGO;
 }
 
 public struct MapTextures
@@ -177,6 +195,7 @@ public static class SD7Unity
             if(root == null)
                 throw new System.Exception(MapInfoLuaFileName + " not found");
 
+            mapData.mapInfoScript = vfs.Script;
             mapData.mapInfoTable = root.Table;
 
             var mapFilePathInMapInfo = mapData.mapInfoTable.Get2("mapfile").String;
@@ -229,18 +248,20 @@ public static class SD7Unity
         mapData.mapGameObject = SMFUnity.CreateMapObject(mapData.smfData.header, mapData.smfData, mapData.smfData.tileIndices, mapData.tiles, mapData.textures);
 
         var atmosphereTable = mapData.mapInfoTable.Get2("atmosphere").Table;
-        var sunColor = atmosphereTable.GetColor("suncolor");
+        mapData.atmosphere.sunColor = atmosphereTable.GetColor("suncolor");
 
         var lightingTable = mapData.mapInfoTable.Get("lighting").Table;
-        var sunDir = -lightingTable.GetVector3("sundir");
+        mapData.lighting.sunDir = -lightingTable.GetVector3("sundir");
 
         var groundAmbientColor = lightingTable.GetColor("groundambientcolor");
+        mapData.lighting.groundAmbientColor = groundAmbientColor;
         RenderSettings.ambientGroundColor = groundAmbientColor;
 
         var groundDiffuseColor = lightingTable.GetColor("grounddiffusecolor");
+        mapData.lighting.groundDiffuseColor = groundDiffuseColor;
         Shader.SetGlobalColor("_GroundDiffuseColor", groundDiffuseColor);
 
-        CreateSun(mapData, sunColor, sunDir);
+        CreateSun(mapData);
 
         var teamsTable = mapData.mapInfoTable.Get2("teams").Table;
         foreach (var i in teamsTable.Pairs)
@@ -328,19 +349,21 @@ public static class SD7Unity
         return values;
     }
 
-    private static GameObject CreateSun(MapData mapData, Color color, Vector3 dir)
+    private static GameObject CreateSun(MapData mapData)
     {
-        var go = new GameObject("Sun");
-        var light = go.AddComponent<Light>();
+        mapData.sunGO = new GameObject("Sun");
+        var light = mapData.sunGO.AddComponent<Light>();
 
         light.type = LightType.Directional;
-        light.color = color;
+        light.color = mapData.atmosphere.sunColor;
         light.shadows = LightShadows.Hard;
 
-        go.transform.parent = mapData.mapGameObject.transform;
-        go.transform.rotation = Quaternion.LookRotation(new Vector3(dir.x, dir.y, -dir.z));
+        var sunDir = mapData.lighting.sunDir;
 
-        return go;
+        mapData.sunGO.transform.parent = mapData.mapGameObject.transform;
+        mapData.sunGO.transform.rotation = Quaternion.LookRotation(new Vector3(sunDir.x, sunDir.y, -sunDir.z));
+
+        return mapData.sunGO;
     }
 
     private static Texture2D LoadTexture(VFS vfs, string name)
