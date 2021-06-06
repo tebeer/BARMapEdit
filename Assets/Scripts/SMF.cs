@@ -77,6 +77,7 @@ public struct SMFData
 	public TileFileInfo[] tileFiles;
 	public int[] tileIndices;
 	public float[] heightMap;
+	public byte[][] tiles;
 	public int resX;
 	public int resY;
 	public float scale;

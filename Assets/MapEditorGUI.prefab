@@ -50,6 +50,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cameraControls: {fileID: 0}
+  noTexture: {fileID: 2800000, guid: 58fb38b11a65dac4d9b7b43d069a88d7, type: 3}
 --- !u!114 &327107956
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -26,13 +26,13 @@ public static unsafe class SMFUnity
             data.heightMap = LoadHeightMap(reader, data.header);
         }
 
-        var tiles = LoadTileFiles(data, (name) =>
+        data.tiles = LoadTileFiles(data, (name) =>
         {
             var tileFilePath = Path.Combine(dir, name);
             return new BinaryReader(File.OpenRead(tileFilePath));
         });
 
-        var root = CreateMapObject(data.header, data, data.tileIndices, tiles, default);
+        var root = CreateMapObject(data, default);
 
         return root;
     }
@@ -117,6 +117,7 @@ public static unsafe class SMFUnity
         data.scale = header.squareSize;
         
         data.heightMap = null;
+        data.tiles = null;
 
         reader.BaseStream.Position = header.tilesPtr;
         data.mapTileHeader = reader.ReadStruct<MapTileHeader>();
@@ -161,9 +162,9 @@ public static unsafe class SMFUnity
     const int ChunkSize = 32;
     const int TexChunkSize = 128; // 1024 pixels
 
-    public static Material CreateMapMaterial(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, int ox, int oy, MapTextures textures)
+    public static Material CreateMapMaterial(SMFData data, int ox, int oy, MapTextures textures)
     {
-        Texture2D mapTex = new Texture2D(TexChunkSize * header.texelPerSquare, TexChunkSize * header.texelPerSquare, TextureFormat.DXT1, 4, false);
+        Texture2D mapTex = new Texture2D(TexChunkSize * data.header.texelPerSquare, TexChunkSize * data.header.texelPerSquare, TextureFormat.DXT1, 4, false);
         mapTex.name = $"MapTexture_{ox}_{oy}";
 
         //mapTex.wrapMode = TextureWrapMode.Clamp;
@@ -180,8 +181,8 @@ public static unsafe class SMFUnity
         {
             for (int x = 0; x < TexChunkSize / 4; ++x)
             {
-                int tileIndex = tileIndices[(header.mapx / 4) * (oy + y) + (ox + x)];
-                var texData = new RawTextureData(tiles[tileIndex], 32, 32, 4, tc);
+                int tileIndex = data.tileIndices[(data.header.mapx / 4) * (oy + y) + (ox + x)];
+                var texData = new RawTextureData(data.tiles[tileIndex], 32, 32, 4, tc);
                 TextureCompression.CopyTexture(tc, texData, outData, x * 32, y * 32, 32, 32);
             }
         }
@@ -216,7 +217,7 @@ public static unsafe class SMFUnity
         return material;
     }
 
-    public static GameObject CreateMapObject(SMFHeader header, SMFData data, int[] tileIndices, byte[][] tiles, MapTextures textures)
+    public static GameObject CreateMapObject(SMFData data, MapTextures textures)
 	{
         GameObject rootGO = new GameObject("Map");
         rootGO.isStatic = true;
@@ -229,7 +230,7 @@ public static unsafe class SMFUnity
         {
             for (int x = 0; x < TexDivisionsX; ++x)
             {
-                materials[x + y * TexDivisionsX] = CreateMapMaterial(header, data, tileIndices, tiles, x * TexChunkSize, y * TexChunkSize, textures);
+                materials[x + y * TexDivisionsX] = CreateMapMaterial(data, x * TexChunkSize, y * TexChunkSize, textures);
             }
         }
 

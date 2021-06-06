@@ -6,7 +6,8 @@ public class SD7Importer : ScriptedImporter
 {
     public override void OnImportAsset(AssetImportContext ctx)
     {
-        var mapData = SD7Unity.LoadSD7(ctx.assetPath);
-        SMFImporter.AddMapObject(ctx, mapData.mapGameObject);
+        var sd7Data = SD7Unity.LoadSD7(ctx.assetPath);
+        var data = MapUtil.CreateMapGameObjects(sd7Data);
+        SMFImporter.AddMapObject(ctx, data.mapGameObject);
     }
 }
