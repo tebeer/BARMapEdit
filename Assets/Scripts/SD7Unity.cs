@@ -235,8 +235,11 @@ public static class SD7Unity
             mapData.textures.splatDetailNormalTex4 = LoadTexture(vfs, resources.Get2("splatDetailNormalTex4").String);
 
             var splats = mapData.mapInfoTable.Get2("splats").Table;
-            mapData.textures.scales = splats.GetVector4("texScales");
-            mapData.textures.mults = splats.GetVector4("texMults");
+            if (splats != null)
+            {
+                mapData.textures.scales = splats.GetVector4("texScales");
+                mapData.textures.mults = splats.GetVector4("texMults");
+            }
         }
 
         //foreach (var kv in mapData.mapInfoTable.Keys)
